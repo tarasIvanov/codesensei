@@ -44,6 +44,9 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 
+# Claude Code local settings (skills/commands ARE tracked)
+.claude/settings.local.json
+
 # Project-specific
 .codesensei-cache/
 *.sqlite
