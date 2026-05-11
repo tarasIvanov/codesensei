@@ -2,12 +2,14 @@
 import { onMounted, ref } from 'vue'
 
 type ProbeStatus = 'ok' | 'down' | 'missing' | 'unknown' | 'pending'
+type ProviderStatus = 'ok' | 'unconfigured' | 'unreachable' | 'pending'
 
 interface HealthEnvelope {
   status: 'ok' | 'degraded'
   db: 'ok' | 'down'
   redis: 'ok' | 'down'
   extensions: { vector: 'ok' | 'missing' | 'unknown' }
+  providers: { llm: ProviderStatus; embedding: ProviderStatus }
   failing?: string[]
 }
 
@@ -15,11 +17,14 @@ const overall = ref<ProbeStatus>('pending')
 const db = ref<ProbeStatus>('pending')
 const redis = ref<ProbeStatus>('pending')
 const vector = ref<ProbeStatus>('pending')
+const llm = ref<ProviderStatus>('pending')
+const embedding = ref<ProviderStatus>('pending')
 const errorMessage = ref<string>('')
 
-function colorFor(status: ProbeStatus): string {
+function colorFor(status: ProbeStatus | ProviderStatus): string {
   if (status === 'ok') return '#16a34a'
   if (status === 'pending') return '#9ca3af'
+  if (status === 'unconfigured') return '#9ca3af'
   return '#dc2626'
 }
 
@@ -31,6 +36,8 @@ onMounted(async () => {
     db.value = body.db
     redis.value = body.redis
     vector.value = body.extensions.vector
+    llm.value = body.providers?.llm ?? 'unconfigured'
+    embedding.value = body.providers?.embedding ?? 'unconfigured'
     if (body.status !== 'ok' && body.failing && body.failing.length) {
       errorMessage.value = 'Failing: ' + body.failing.join(', ')
     }
@@ -39,6 +46,8 @@ onMounted(async () => {
     db.value = 'down'
     redis.value = 'down'
     vector.value = 'unknown'
+    llm.value = 'unreachable'
+    embedding.value = 'unreachable'
     errorMessage.value = (err as Error).message || 'healthcheck call failed'
   }
 })
@@ -64,6 +73,14 @@ onMounted(async () => {
       <li>
         <span class="dot" :style="{ background: colorFor(vector) }" aria-hidden="true"></span>
         pgvector: <strong>{{ vector }}</strong>
+      </li>
+      <li>
+        <span class="dot" :style="{ background: colorFor(llm) }" aria-hidden="true"></span>
+        llm: <strong>{{ llm }}</strong>
+      </li>
+      <li>
+        <span class="dot" :style="{ background: colorFor(embedding) }" aria-hidden="true"></span>
+        embedding: <strong>{{ embedding }}</strong>
       </li>
     </ul>
     <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
