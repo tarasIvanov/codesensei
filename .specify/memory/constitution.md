@@ -1,50 +1,163 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+Sync Impact Report
+==================
+Version change: 0.0.0 → 1.0.0 (initial ratification)
+Modified principles: N/A (initial ratification)
+Added sections:
+  - Core Principles I–V
+  - Technology Stack & Async Discipline
+  - Development Workflow & Quality Gates
+  - Governance
+Removed sections: N/A
+Templates requiring updates:
+  - ✅ .specify/templates/plan-template.md — `## Constitution Check` section is a
+        generic placeholder (`[Gates determined based on constitution file]`); no
+        template-level edit needed. Each `/speckit-plan` invocation MUST populate
+        per-feature gates from Principles I–V.
+  - ✅ .specify/templates/spec-template.md — no constitution-specific stanza;
+        aligned as-is.
+  - ✅ .specify/templates/tasks-template.md — `Tests for User Story (OPTIONAL)`
+        block stays optional at template level; for features that touch critical
+        paths (Principle III, Workflow §3) `/speckit-tasks` MUST flip those tests
+        to mandatory and order them before implementation tasks.
+  - ✅ CLAUDE.md — current marker contains no principle references; no update
+        needed at initial ratification.
+Deferred TODOs: none.
+-->
+
+# CodeSensei Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Spec-Driven Development (NON-NEGOTIABLE)
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+Every non-trivial subsystem MUST have a `/speckit-specify` specification, a
+`/speckit-plan` implementation plan, and a `/speckit-tasks` task list approved
+before any production code is written. Trivial chores — typo fixes, single-file
+configuration tweaks, doc-only edits — are exempt. Reverting this rule on a
+case-by-case basis is forbidden; if a change feels too small for a spec, it
+either truly is exempt or it is two changes (extract the trivial part).
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+*Rationale*: the thesis defence requires demonstrable process discipline. The
+artefacts under `specs/` are evidence; "vibe coding" of architectural surfaces
+leaves no audit trail and is the failure mode this project is designed against.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### II. ADR-Driven Architectural Decisions (NON-NEGOTIABLE)
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+Any change that touches the database schema or engine, the queue system, the
+web framework, an AI provider or embedding model, the deployment shape, or the
+PR-comment-posting strategy MUST be recorded as a new ADR in
+`../_decision_log.md` BEFORE implementation begins. Silent architectural
+choices are forbidden. ADR-001 through ADR-006 are immutable except via an
+explicit superseding ADR with `Status: superseded by ADR-NNN`.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+*Rationale*: bachelor thesis review demands justification for every
+architectural decision. A merged PR without a prior ADR is an unjustified
+decision and a defect.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### III. Pluggable AI Provider Boundaries
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+All interaction with LLMs and embedding models MUST go through the
+`LLMProvider` and `EmbeddingProvider` adapter interfaces defined in ADR-003.
+Direct imports of `openai`, `anthropic`, `ollama`, or `sentence_transformers`
+outside their respective adapter implementations are forbidden. Switching
+providers MUST be a configuration change (`config.yaml` + Settings UI), never a
+business-logic change. Adapter implementations MUST hide model-specific knobs
+(token limits, JSON-mode flags, embedding dimensions) behind a uniform
+contract.
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+*Rationale*: the privacy-controllable provider mix (cloud default + local
+first-class) is the core architectural differentiator of CodeSensei versus
+CodeRabbit and Greptile. Leaking provider details into call sites collapses
+that differentiator into a vendor lock-in.
+
+### IV. Privacy & Credentials Discipline
+
+User source code MUST NOT leave the self-hosted boundary except as chunks sent
+to embedding or LLM APIs (NFR-3.2). API keys, GitHub user PATs, and the
+`codesensei-bot` fine-grained PAT MUST be stored either encrypted-at-rest in
+the database or in environment variables; plaintext storage in the database is
+forbidden, and credentials MUST NOT be serialised to the frontend in any form,
+including via debug endpoints or error payloads (NFR-3.1). Pre-flight secret
+scrubbing on chunks SHOULD ship with the indexing pipeline; if deferred, the
+deferral MUST be tracked in the corresponding spec under `## Assumptions`.
+
+*Rationale*: privacy is the headline self-hosted advantage. A single leaked
+credential or unscrubbed chunk negates the entire positioning of the product.
+
+### V. Single-Command Deployment
+
+The entire system MUST run via `docker-compose up` on a host with only Docker
+installed (ADR-002, NFR-4.1, NFR-4.2). Every new infrastructural component —
+database, queue, model server, observability agent, anything — MUST be added
+as a new service in `docker-compose.yml`, never as a host-side setup step. The
+only permitted host-side configuration is populating `.env` with secrets and
+optionally selecting profile flags (e.g. `--profile ollama`). Adding a "see
+README for manual setup of X" instruction is an automatic violation.
+
+*Rationale*: the single-command deploy is the user-facing promise of the
+product and the criterion that separates CodeSensei from any "self-hosted but
+fiddly" alternative. Erosion of this promise erodes the product.
+
+## Technology Stack & Async Discipline
+
+- **Backend**: Python 3.12+, FastAPI, SQLAlchemy 2.x async, asyncpg, alembic,
+  arq + Redis (ADR-005).
+- **Frontend**: Vue 3 SPA built with Vite, served by nginx inside the
+  `frontend` container.
+- **Database**: PostgreSQL 16 with the pgvector extension; HNSW index on
+  `chunks.embedding` (ADR-004).
+- **AI providers**: OpenAI (default), Anthropic, Ollama for LLM; OpenAI
+  `text-embedding-3-small` (default) and `BAAI/bge-m3` via
+  `sentence-transformers` for embeddings (ADR-003).
+- **Async by default**: all I/O — LLM calls, DB queries, outbound HTTP,
+  filesystem walks, WebSocket progress — MUST be `async`. Synchronous code is
+  permitted only for CPU-bound work (e.g. tree-sitter AST parsing).
+  Blocking synchronous calls inside a FastAPI request handler are forbidden;
+  use `asyncio.to_thread` or `arq` enqueue for CPU-bound or long-running work.
+- **Stack changes**: any deviation from the items above requires a new ADR per
+  Principle II before implementation.
+
+## Development Workflow & Quality Gates
+
+- **Branch-per-change**: every change lands via a GitHub PR from a feature
+  branch. Direct push to `main` is blocked at the harness/hook level and MUST
+  remain blocked.
+- **Conventional names**: branches and commit subjects use Conventional
+  Commits prefixes — `feat/<slug>`, `fix/<slug>`, `chore/<slug>`,
+  `refactor/<slug>`, `docs/<slug>`, `test/<slug>`. Subjects ≤72 characters.
+- **Test-first for critical paths**: AST chunking, retrieval (overlap +
+  dependents + vector top-K), prompt assembly, parsing structured LLM output,
+  and bot-mode posting MUST have failing tests committed before
+  implementation. Glue code, UI wiring, and trivial plumbing are exempt.
+- **Structured logging**: every major event — indexing start/stop, retrieval
+  batch, LLM call (with prompt/completion token counts), errors — MUST emit a
+  structured log line (JSON or `key=value`) to stdout (NFR-5.2). `print()` is
+  forbidden in production code paths.
+- **Pre-flight token counting**: every LLM call MUST run `tiktoken` (or
+  provider-equivalent) on the assembled prompt before dispatch (FR-6.2). On
+  context overflow, the retrieval layer drops the lowest-similarity chunks
+  whole rather than truncating mid-chunk.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+- **Scope**: this constitution governs the *product code* under `app/`. The
+  companion document `../_constitution.md` governs the *thesis-writing process*
+  (writer/translator/critic agents, Ukrainian humanizer rules, anti-plagiarism)
+  and is out of scope here.
+- **Amendments**: each amendment ships as a dedicated PR titled
+  `docs: amend constitution to vX.Y.Z`. Version bumps follow semver:
+  - **MAJOR**: backward-incompatible principle removal or redefinition.
+  - **MINOR**: new principle or materially expanded guidance.
+  - **PATCH**: wording, typo, or non-semantic clarification.
+- **Per-PR compliance**: every PR description MUST contain a `Constitution
+  Check` line listing the principles touched (e.g. `Constitution Check: I, III,
+  IV`) or `N/A` for pure chores. PRs without this line MUST NOT merge.
+- **Complexity budget**: any change that erodes Principle V (single-command
+  deployment) MUST be justified in the PR description under `## Complexity
+  Tracking` and SHOULD trigger a new ADR.
+- **Runtime guidance**: `CLAUDE.md` and the `.specify/` templates are the
+  runtime guidance entry points and MUST stay aligned with this file. The
+  `/speckit-constitution` skill is the only sanctioned editor of this document.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Version**: 1.0.0 | **Ratified**: 2026-05-11 | **Last Amended**: 2026-05-11
