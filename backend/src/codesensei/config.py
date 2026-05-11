@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     anthropic_api_key: str = ""
 
+    llm_model: str = ""
+    embedding_model: str = ""
+    ollama_base_url: str = "http://ollama:11434"
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
