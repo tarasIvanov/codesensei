@@ -92,11 +92,22 @@ def test_finding_rejects_unknown_severity():
         Finding(file="a", line=1, severity="lol", message="x")  # type: ignore[arg-type]
 
 
-def test_finding_rejects_zero_or_negative_line():
-    with pytest.raises(ValueError):
-        Finding(file="a", line=0, severity=Severity.MINOR, message="x")
-    with pytest.raises(ValueError):
-        Finding(file="a", line=-3, severity=Severity.MINOR, message="x")
+def test_finding_coerces_zero_or_negative_line_to_none():
+    # LLMs emit 0 for file-level; we accept and convert to None instead of erroring.
+    f = Finding(file="a", line=0, severity=Severity.MINOR, message="x")
+    assert f.line is None
+    f = Finding(file="a", line=-3, severity=Severity.MINOR, message="x")
+    assert f.line is None
+
+
+def test_finding_coerces_string_digit_line():
+    f = Finding(file="a", line="12", severity=Severity.MINOR, message="x")  # type: ignore[arg-type]
+    assert f.line == 12
+
+
+def test_finding_coerces_uppercase_severity():
+    f = Finding(file="a", line=1, severity="MAJOR", message="x")  # type: ignore[arg-type]
+    assert f.severity is Severity.MAJOR
 
 
 def test_finding_accepts_null_line():

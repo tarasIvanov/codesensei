@@ -71,8 +71,14 @@ def parse_review(
         try:
             findings.append(Finding(**entry))
         except (ValidationError, ValueError) as exc:
+            if isinstance(exc, ValidationError):
+                first = exc.errors()[0]
+                loc = ".".join(str(p) for p in first.get("loc", ()))
+                reason = f"{loc}: {first.get('msg', 'invalid')}"
+            else:
+                reason = str(exc)
             raise ReviewError(
                 ReviewErrorCategory.PROVIDER_MALFORMED_OUTPUT,
-                f"{provider_name} finding failed validation.",
+                f"{provider_name} finding failed validation ({reason}).",
             ) from exc
     return verdict, findings

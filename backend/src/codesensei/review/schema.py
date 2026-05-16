@@ -52,11 +52,30 @@ class Finding(BaseModel):
     message: str = Field(min_length=1)
     suggestion: str | None = None
 
-    @field_validator("line")
+    @field_validator("severity", mode="before")
     @classmethod
-    def _line_positive(cls, v: int | None) -> int | None:
-        if v is not None and v <= 0:
-            raise ValueError("line must be a positive integer or null")
+    def _normalise_severity(cls, v: object) -> object:
+        # LLMs occasionally emit "Major", "MAJOR", " minor ", etc.
+        if isinstance(v, str):
+            return v.strip().lower()
+        return v
+
+    @field_validator("line", mode="before")
+    @classmethod
+    def _coerce_line(cls, v: object) -> object:
+        # LLMs sometimes emit 0 for "file-level" and string digits like "12".
+        if v is None:
+            return None
+        if isinstance(v, str):
+            stripped = v.strip()
+            if not stripped or stripped.lower() in {"null", "none", "n/a"}:
+                return None
+            try:
+                v = int(stripped)
+            except ValueError:
+                return v  # let the int validator fail loudly
+        if isinstance(v, int) and v <= 0:
+            return None
         return v
 
     @field_validator("message")
