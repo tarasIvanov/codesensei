@@ -2,28 +2,17 @@
 import { computed, ref } from 'vue'
 
 import FindingsList, { type Finding } from '../components/FindingsList.vue'
-import {
-  ReviewApiError,
-  runReview,
-  type ReviewBody,
-  type ReviewResult,
-} from '../api/review'
+import { ReviewApiError, runReview, type ReviewResult } from '../api/review'
 
-type Mode = 'diff' | 'pr_url'
-
-const mode = ref<Mode>('diff')
-const diff = ref('')
 const prUrl = ref('')
 const isLoading = ref(false)
 const result = ref<ReviewResult | null>(null)
 const errorMessage = ref('')
 const errorRetryable = ref(false)
 
-const canSubmit = computed<boolean>(() => {
-  if (isLoading.value) return false
-  if (mode.value === 'diff') return diff.value.trim().length > 0
-  return prUrl.value.trim().length > 0
-})
+const canSubmit = computed<boolean>(
+  () => !isLoading.value && prUrl.value.trim().length > 0,
+)
 
 async function submit(): Promise<void> {
   if (!canSubmit.value) return
@@ -32,9 +21,7 @@ async function submit(): Promise<void> {
   errorMessage.value = ''
   errorRetryable.value = false
   try {
-    const body: ReviewBody =
-      mode.value === 'diff' ? { diff: diff.value } : { pr_url: prUrl.value.trim() }
-    result.value = await runReview(body)
+    result.value = await runReview({ pr_url: prUrl.value.trim() })
   } catch (err) {
     if (err instanceof ReviewApiError) {
       errorMessage.value = err.message
@@ -54,43 +41,16 @@ const findings = computed<Finding[]>(() => result.value?.findings ?? [])
   <section>
     <h1>Review a pull request</h1>
     <p class="subtitle">
-      Paste a unified diff or a GitHub PR URL. The configured LLM provider returns
-      structured findings.
+      Paste a GitHub PR URL. The configured LLM provider returns structured findings.
     </p>
 
-    <div class="mode-toggle">
-      <button
-        type="button"
-        :class="{ active: mode === 'diff' }"
-        @click="mode = 'diff'"
-      >
-        Paste diff
-      </button>
-      <button
-        type="button"
-        :class="{ active: mode === 'pr_url' }"
-        @click="mode = 'pr_url'"
-      >
-        PR URL
-      </button>
-    </div>
-
-    <textarea
-      v-if="mode === 'diff'"
-      v-model="diff"
-      class="diff-input"
-      rows="14"
-      spellcheck="false"
-      placeholder="diff --git a/... b/..."
-    ></textarea>
-
     <input
-      v-else
       v-model="prUrl"
       class="url-input"
       type="text"
       spellcheck="false"
       placeholder="https://github.com/owner/repo/pull/123"
+      @keydown.enter="submit"
     />
 
     <div class="actions">
@@ -127,36 +87,6 @@ h1 {
 .subtitle {
   color: #64748b;
   margin: 0 0 1rem;
-}
-.mode-toggle {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-}
-.mode-toggle button {
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 0.8rem;
-  background: #f3f4f6;
-  border: 1px solid #d1d5db;
-  border-radius: 0.4rem;
-  padding: 0.3rem 0.7rem;
-  cursor: pointer;
-}
-.mode-toggle button.active {
-  background: #0f172a;
-  color: #f8fafc;
-  border-color: #0f172a;
-}
-.diff-input {
-  width: 100%;
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 0.85rem;
-  padding: 0.75rem;
-  border: 1px solid #d1d5db;
-  border-radius: 0.5rem;
-  box-sizing: border-box;
-  resize: vertical;
-  background: #f9fafb;
 }
 .url-input {
   width: 100%;
