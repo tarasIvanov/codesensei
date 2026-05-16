@@ -51,3 +51,10 @@ Thumbs.db
 .codesensei-cache/
 *.sqlite
 *.db
+
+# vue-tsc build artefacts (emitted next to sources during local `vue-tsc -b` runs)
+frontend/src/**/*.js
+frontend/src/**/*.d.ts
+frontend/vite.config.js
+frontend/vite.config.d.ts
+frontend/*.tsbuildinfo

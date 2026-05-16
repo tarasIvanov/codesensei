@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     embedding_model: str = ""
     ollama_base_url: str = "http://ollama:11434"
 
+    review_max_diff_bytes: int = 256_000
+    review_llm_timeout_s: float = 60.0
+    github_token: str = ""
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
