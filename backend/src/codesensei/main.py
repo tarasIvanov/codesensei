@@ -9,6 +9,8 @@ from fastapi.responses import JSONResponse
 
 from codesensei.config import get_settings
 from codesensei.healthcheck import router as healthcheck_router
+from codesensei.indexing.api import router as indexing_router
+from codesensei.indexing.errors import IndexError as _IdxError
 from codesensei.logging_config import configure_logging
 from codesensei.review.errors import ReviewError, ReviewErrorCategory
 from codesensei.review.router import router as review_router
@@ -32,6 +34,10 @@ def _review_envelope(exc: ReviewError) -> JSONResponse:
 
 
 def _job_envelope(exc: JobError) -> JSONResponse:
+    return JSONResponse(status_code=exc.http_status, content=exc.to_envelope())
+
+
+def _index_envelope(exc: _IdxError) -> JSONResponse:
     return JSONResponse(status_code=exc.http_status, content=exc.to_envelope())
 
 
@@ -70,6 +76,10 @@ def create_app() -> FastAPI:
     async def _job_error_handler(_request: Request, exc: JobError) -> JSONResponse:
         return _job_envelope(exc)
 
+    @app.exception_handler(_IdxError)
+    async def _index_error_handler(_request: Request, exc: _IdxError) -> JSONResponse:
+        return _index_envelope(exc)
+
     @app.exception_handler(RequestValidationError)
     async def _validation_handler(
         _request: Request, exc: RequestValidationError
@@ -90,6 +100,7 @@ def create_app() -> FastAPI:
     app.include_router(review_router, prefix="/api")
     app.include_router(jobs_router, prefix="/api")
     app.include_router(settings_router, prefix="/api")
+    app.include_router(indexing_router, prefix="/api")
     return app
 
 

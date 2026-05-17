@@ -14,10 +14,11 @@ docker compose up --build -d  # pull images, build, start all services
 curl http://localhost:8000/healthz  # should return {"status":"ok",...}
 ```
 
-Open `http://localhost:5173` in a browser — the SPA shows three pages:
+Open `http://localhost:5173` in a browser — the SPA shows four pages:
 
 - `/` — live status of every component (db, redis, pgvector, LLM provider, embedding provider, worker).
-- `/review` — paste a GitHub PR URL → structured findings rendered grouped by file. End-to-end demo of the LLM provider abstraction. See [`specs/003-pr-review-mvp/quickstart.md`](specs/003-pr-review-mvp/quickstart.md) for scenarios.
+- `/review` — paste a GitHub PR URL → structured findings rendered grouped by file. Optionally pick an indexed repository to enable RAG-augmented review (the response then surfaces the files that contributed retrieved context). See [`specs/003-pr-review-mvp/quickstart.md`](specs/003-pr-review-mvp/quickstart.md) for the original diff-only flow and [`specs/005-rag-indexing/quickstart.md`](specs/005-rag-indexing/quickstart.md) for the RAG flow.
+- `/repos` — index a public HTTPS repository or a locally mounted directory; chunks live in pgvector (HNSW + cosine). Sync for ≤200 source files; async via the arq queue for larger repos. Re-indexing replaces chunks atomically.
 - `/settings` — switch active LLM/embedding provider, manage API keys and model overrides without editing `.env`. Credentials are stored encrypted at rest (Fernet, keyed on `MASTER_KEY`). See [`specs/004-ops-quality-polish/quickstart.md`](specs/004-ops-quality-polish/quickstart.md).
 
 ### Port overrides
