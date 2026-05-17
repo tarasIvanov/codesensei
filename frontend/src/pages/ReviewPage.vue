@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import FindingsList, { type Finding } from '../components/FindingsList.vue'
+import ContextFilesPanel from '../components/ContextFilesPanel.vue'
 import { ReviewApiError, runReview, type ReviewResult } from '../api/review'
+import { listRepos, type RepoEntry } from '../api/repos'
 
 const prUrl = ref('')
 const isLoading = ref(false)
@@ -10,9 +12,29 @@ const result = ref<ReviewResult | null>(null)
 const errorMessage = ref('')
 const errorRetryable = ref(false)
 
+const repos = ref<RepoEntry[]>([])
+const selectedRepoId = ref<string>('')
+const reposLoaded = ref(false)
+
+const readyRepos = computed<RepoEntry[]>(() =>
+  repos.value.filter((r) => r.status === 'ready'),
+)
+
 const canSubmit = computed<boolean>(
   () => !isLoading.value && prUrl.value.trim().length > 0,
 )
+
+async function refreshRepos(): Promise<void> {
+  try {
+    repos.value = await listRepos()
+  } catch {
+    repos.value = []
+  } finally {
+    reposLoaded.value = true
+  }
+}
+
+onMounted(refreshRepos)
 
 async function submit(): Promise<void> {
   if (!canSubmit.value) return
@@ -21,7 +43,10 @@ async function submit(): Promise<void> {
   errorMessage.value = ''
   errorRetryable.value = false
   try {
-    result.value = await runReview({ pr_url: prUrl.value.trim() })
+    result.value = await runReview({
+      pr_url: prUrl.value.trim(),
+      repo_id: selectedRepoId.value || null,
+    })
   } catch (err) {
     if (err instanceof ReviewApiError) {
       errorMessage.value = err.message
@@ -42,6 +67,20 @@ const findings = computed<Finding[]>(() => result.value?.findings ?? [])
     <h1>Review a pull request</h1>
     <p class="subtitle">
       Paste a GitHub PR URL. The configured LLM provider returns structured findings.
+      Optionally pick an indexed repository — its top-K semantically nearest chunks will be added as context.
+    </p>
+
+    <div v-if="readyRepos.length > 0" class="context-row">
+      <label for="repo-select" class="ctx-label">Use context from repository:</label>
+      <select id="repo-select" v-model="selectedRepoId" class="repo-select">
+        <option value="">(none)</option>
+        <option v-for="r in readyRepos" :key="r.repo_id" :value="r.repo_id">
+          {{ r.source }}  ·  {{ r.chunk_count }} chunks
+        </option>
+      </select>
+    </div>
+    <p v-else-if="reposLoaded" class="hint">
+      Tip: index a repository on the <RouterLink to="/repos">Repositories</RouterLink> page to enable RAG context for reviews.
     </p>
 
     <input
@@ -67,6 +106,11 @@ const findings = computed<Finding[]>(() => result.value?.findings ?? [])
       <button v-if="errorRetryable" class="retry" @click="submit">Try again</button>
     </p>
 
+    <ContextFilesPanel
+      v-if="result && result.context_files !== undefined && result.context_files !== null"
+      :files="result.context_files"
+    />
+
     <FindingsList
       v-if="result"
       :findings="findings"
@@ -87,6 +131,30 @@ h1 {
 .subtitle {
   color: #64748b;
   margin: 0 0 1rem;
+}
+.context-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+.ctx-label {
+  font-size: 0.85rem;
+  color: #475569;
+}
+.repo-select {
+  flex: 1;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.4rem;
+  border: 1px solid #cbd5e1;
+  background: #f9fafb;
+}
+.hint {
+  color: #64748b;
+  font-size: 0.85rem;
+  margin: 0 0 0.6rem;
 }
 .url-input {
   width: 100%;

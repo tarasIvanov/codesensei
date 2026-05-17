@@ -8,6 +8,8 @@ export type ReviewErrorCategory =
   | 'provider_unavailable'
   | 'provider_malformed_output'
   | 'settings_locked'
+  | 'repo_not_ready'
+  | 'embedding_mismatch'
   | 'internal'
 
 export interface Finding {
@@ -23,11 +25,13 @@ export interface ReviewResult {
   findings: Finding[]
   provider: string
   elapsed_ms: number
+  context_files?: string[] | null
 }
 
 export interface ReviewBody {
   diff?: string
   pr_url?: string
+  repo_id?: string | null
 }
 
 export class ReviewApiError extends Error {
@@ -51,14 +55,22 @@ const FALLBACK_MESSAGE_FOR_CATEGORY: Record<ReviewErrorCategory, string> = {
     'The review service returned an unexpected response. Try again.',
   settings_locked:
     'Settings storage is locked — set MASTER_KEY before saving credentials.',
+  repo_not_ready:
+    'The selected repository is still being indexed. Wait until it is ready and retry.',
+  embedding_mismatch:
+    'This repository was indexed with a different embedding provider/model than the active one. Re-index the repository or revert the provider change.',
   internal: 'Unexpected server error.',
 }
 
 export async function runReview(body: ReviewBody): Promise<ReviewResult> {
+  const payload: Record<string, unknown> = {}
+  if (body.diff !== undefined) payload.diff = body.diff
+  if (body.pr_url !== undefined) payload.pr_url = body.pr_url
+  if (body.repo_id) payload.repo_id = body.repo_id
   const response = await fetch('/api/review', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   })
   if (response.ok) {
     return (await response.json()) as ReviewResult

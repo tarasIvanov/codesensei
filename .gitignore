@@ -58,3 +58,4 @@ frontend/src/**/*.d.ts
 frontend/vite.config.js
 frontend/vite.config.d.ts
 frontend/*.tsbuildinfo
+.playwright-mcp/

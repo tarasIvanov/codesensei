@@ -17,6 +17,9 @@ dependencies = [
   "anthropic>=0.40",
   "arq>=0.26",
   "cryptography>=44",
+  "tiktoken>=0.7",
+  "aiofiles>=24",
+  "pgvector>=0.3",
 ]
 
 [project.optional-dependencies]

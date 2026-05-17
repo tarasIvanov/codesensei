@@ -1,8 +1,19 @@
-"""Verbatim prompt template (frozen by contracts/llm_prompt_v2.md, supersedes v1)."""
+"""Verbatim prompt template (frozen by contracts/llm_prompt_v3.md; SYSTEM unchanged from v2)."""
 # ruff: noqa: E501  -- prompt template is contract-frozen; reflowing changes meaning.
 from __future__ import annotations
 
+from collections.abc import Iterable
+from typing import Protocol
+
 from codesensei.providers.base import ChatMessage
+
+
+class _ChunkLike(Protocol):
+    file_path: str
+    start_line: int
+    end_line: int
+    content: str
+    token_count: int
 
 SYSTEM_MESSAGE = """\
 You are a senior code reviewer. You receive a single unified diff and respond with a structured JSON review. You MUST follow these rules without exception:
@@ -41,8 +52,35 @@ Example finding for a hardcoded credential:
 USER_TEMPLATE = "Review the following unified diff:\n\n```diff\n{DIFF}\n```"
 
 
-def build_messages(diff: str) -> list[ChatMessage]:
+def _render_context_block(chunks: Iterable[_ChunkLike]) -> str:
+    chunks_list = list(chunks)
+    if not chunks_list:
+        return ""
+    total_tokens = sum(c.token_count for c in chunks_list)
+    pieces = [
+        f"Relevant context from repository (top-{len(chunks_list)} chunks, total {total_tokens} tokens):\n"
+    ]
+    for c in chunks_list:
+        pieces.append(f"--- {c.file_path} (lines {c.start_line}-{c.end_line}) ---")
+        pieces.append(c.content)
+        pieces.append("")
+    pieces.append("End of repository context.")
+    pieces.append("")
+    return "\n".join(pieces) + "\n"
+
+
+def render_user_message(*, diff: str, retrieved_chunks: Iterable[_ChunkLike] | None = None) -> str:
+    """Compose the USER message. Empty/missing chunks → byte-equivalent to v2."""
+    block = _render_context_block(retrieved_chunks or [])
+    if not block:
+        return USER_TEMPLATE.format(DIFF=diff)
+    return block + USER_TEMPLATE.format(DIFF=diff)
+
+
+def build_messages(
+    diff: str, *, retrieved_chunks: Iterable[_ChunkLike] | None = None
+) -> list[ChatMessage]:
     return [
         {"role": "system", "content": SYSTEM_MESSAGE},
-        {"role": "user", "content": USER_TEMPLATE.format(DIFF=diff)},
+        {"role": "user", "content": render_user_message(diff=diff, retrieved_chunks=retrieved_chunks)},
     ]

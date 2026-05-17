@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -98,6 +99,7 @@ class ReviewResult(BaseModel):
     findings: list[Finding]
     provider: str
     elapsed_ms: int
+    context_files: list[str] | None = None  # NEW (feature 005): present only when repo_id was used
 
 
 class ReviewRequest(BaseModel):
@@ -105,6 +107,7 @@ class ReviewRequest(BaseModel):
 
     diff: str | None = None
     pr_url: str | None = None
+    repo_id: UUID | None = None  # NEW (feature 005): opt-in RAG augmentation
 
     @model_validator(mode="after")
     def _exactly_one(self) -> ReviewRequest:

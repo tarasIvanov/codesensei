@@ -43,6 +43,37 @@ async def enqueue_ping() -> tuple[str, datetime]:
         await pool.aclose()
 
 
+async def enqueue_index_repo(
+    *,
+    repo_id: Any,
+    source: str,
+    source_kind: str,
+    default_branch: str | None,
+) -> str:
+    """Enqueue index_repo_job; return job_id."""
+    try:
+        pool = await create_pool(_redis_settings())
+    except (RedisError, OSError) as exc:
+        raise JobError(
+            JobErrorCategory.QUEUE_UNAVAILABLE,
+            "Redis is not reachable.",
+            retryable=True,
+        ) from exc
+    try:
+        job = await pool.enqueue_job(
+            "index_repo_job",
+            str(repo_id),
+            source,
+            source_kind,
+            default_branch,
+        )
+        if job is None:
+            raise JobError(JobErrorCategory.INTERNAL, "arq returned no job handle.")
+        return job.job_id
+    finally:
+        await pool.aclose()
+
+
 async def lookup_job(job_id: str) -> dict[str, Any]:
     """Return the same wire shape as contracts/api_jobs.md GET success/not-found."""
     if not job_id or len(job_id) > 200:
