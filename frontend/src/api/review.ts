@@ -7,6 +7,7 @@ export type ReviewErrorCategory =
   | 'github_fetch_failed'
   | 'provider_unavailable'
   | 'provider_malformed_output'
+  | 'settings_locked'
   | 'internal'
 
 export interface Finding {
@@ -48,6 +49,8 @@ const FALLBACK_MESSAGE_FOR_CATEGORY: Record<ReviewErrorCategory, string> = {
   provider_unavailable: 'The review service is currently unavailable. Try again.',
   provider_malformed_output:
     'The review service returned an unexpected response. Try again.',
+  settings_locked:
+    'Settings storage is locked — set MASTER_KEY before saving credentials.',
   internal: 'Unexpected server error.',
 }
 

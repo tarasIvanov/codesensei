@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     review_llm_timeout_s: float = 60.0
     github_token: str = ""
 
+    master_key: str = ""
+    worker_heartbeat_stale_s: int = 60
+    job_result_ttl_s: int = 3600
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

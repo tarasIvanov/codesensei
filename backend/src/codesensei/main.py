@@ -1,4 +1,5 @@
 """FastAPI app factory."""
+from contextlib import asynccontextmanager
 from urllib.parse import urlparse
 
 import structlog
@@ -11,6 +12,13 @@ from codesensei.healthcheck import router as healthcheck_router
 from codesensei.logging_config import configure_logging
 from codesensei.review.errors import ReviewError, ReviewErrorCategory
 from codesensei.review.router import router as review_router
+from codesensei.settings_store.api import router as settings_router
+from codesensei.settings_store.runtime import (
+    apply_store_overrides_to_env,
+    snapshot_env_baseline,
+)
+from codesensei.tasks.api import router as jobs_router
+from codesensei.tasks.errors import JobError
 
 
 def _safe_host(url: str) -> str:
@@ -19,8 +27,24 @@ def _safe_host(url: str) -> str:
     return parsed.hostname or "unknown"
 
 
-def _envelope_response(exc: ReviewError) -> JSONResponse:
+def _review_envelope(exc: ReviewError) -> JSONResponse:
     return JSONResponse(status_code=exc.http_status, content=exc.to_envelope())
+
+
+def _job_envelope(exc: JobError) -> JSONResponse:
+    return JSONResponse(status_code=exc.http_status, content=exc.to_envelope())
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    snapshot_env_baseline()
+    try:
+        await apply_store_overrides_to_env()
+    except Exception as exc:  # noqa: BLE001
+        structlog.get_logger().warning(
+            "settings_store.startup_apply_failed", error=str(exc)
+        )
+    yield
 
 
 def create_app() -> FastAPI:
@@ -36,31 +60,36 @@ def create_app() -> FastAPI:
         redis_host=_safe_host(settings.redis_url),
     )
 
-    app = FastAPI(title="CodeSensei", version="0.0.0")
+    app = FastAPI(title="CodeSensei", version="0.0.0", lifespan=_lifespan)
 
     @app.exception_handler(ReviewError)
     async def _review_error_handler(_request: Request, exc: ReviewError) -> JSONResponse:
-        return _envelope_response(exc)
+        return _review_envelope(exc)
+
+    @app.exception_handler(JobError)
+    async def _job_error_handler(_request: Request, exc: JobError) -> JSONResponse:
+        return _job_envelope(exc)
 
     @app.exception_handler(RequestValidationError)
     async def _validation_handler(
         _request: Request, exc: RequestValidationError
     ) -> JSONResponse:
-        # Surface the first underlying ReviewError if pydantic wrapped one.
         for err in exc.errors():
             ctx = err.get("ctx") or {}
             inner = ctx.get("error")
             if isinstance(inner, ReviewError):
-                return _envelope_response(inner)
+                return _review_envelope(inner)
         wrapped = ReviewError(
             ReviewErrorCategory.INVALID_INPUT,
             "Request body failed validation.",
         )
-        return _envelope_response(wrapped)
+        return _review_envelope(wrapped)
 
     app.include_router(healthcheck_router)
     app.include_router(healthcheck_router, prefix="/api")
     app.include_router(review_router, prefix="/api")
+    app.include_router(jobs_router, prefix="/api")
+    app.include_router(settings_router, prefix="/api")
     return app
 
 

@@ -12,6 +12,10 @@ services:
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-openai}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      MASTER_KEY: ${MASTER_KEY:-}
+      WORKER_HEARTBEAT_STALE_S: ${WORKER_HEARTBEAT_STALE_S:-60}
+      JOB_RESULT_TTL_S: ${JOB_RESULT_TTL_S:-3600}
     ports:
       - "${API_HOST_PORT:-8000}:8000"
     depends_on:
@@ -25,6 +29,27 @@ services:
       timeout: 3s
       retries: 5
       start_period: 30s
+
+  worker:
+    build:
+      context: ./backend
+    image: codesensei-api:dev
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://codesensei:codesensei@postgres:5432/codesensei}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-openai}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      MASTER_KEY: ${MASTER_KEY:-}
+      JOB_RESULT_TTL_S: ${JOB_RESULT_TTL_S:-3600}
+    command: ["arq", "codesensei.tasks.worker.WorkerSettings"]
+    depends_on:
+      redis:
+        condition: service_healthy
 
   frontend:
     build:

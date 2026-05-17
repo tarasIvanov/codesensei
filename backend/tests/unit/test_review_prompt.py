@@ -36,3 +36,26 @@ def test_build_messages_produces_two_roles():
     assert msgs[0]["content"] == SYSTEM_MESSAGE
     assert "```diff" in msgs[1]["content"]
     assert "diff --git a/x b/x" in msgs[1]["content"]
+
+
+# === v2 additions (004-ops-quality-polish, contracts/llm_prompt_v2.md) ===
+
+
+def test_system_message_pins_blocker_tier_rule():
+    must_contain = [
+        "Blocker tier",
+        "hardcoded credentials",
+        "SQL injection",
+        "eval()/exec()/compile()",
+    ]
+    for needle in must_contain:
+        assert needle in SYSTEM_MESSAGE, f"missing pin: {needle!r}"
+
+
+def test_system_message_pins_line_number_anchor_rule():
+    assert "Line-number anchor." in SYSTEM_MESSAGE
+    assert "@@ -A,B +C,D @@" in SYSTEM_MESSAGE
+
+
+def test_system_message_pins_few_shot_example():
+    assert "Example finding for a hardcoded credential:" in SYSTEM_MESSAGE

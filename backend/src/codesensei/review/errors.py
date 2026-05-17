@@ -11,6 +11,7 @@ class ReviewErrorCategory(StrEnum):
     GITHUB_FETCH_FAILED = "github_fetch_failed"
     PROVIDER_UNAVAILABLE = "provider_unavailable"
     PROVIDER_MALFORMED_OUTPUT = "provider_malformed_output"
+    SETTINGS_LOCKED = "settings_locked"
     INTERNAL = "internal"
 
 
@@ -21,6 +22,7 @@ HTTP_FOR_CATEGORY: MappingProxyType[ReviewErrorCategory, int] = MappingProxyType
         ReviewErrorCategory.GITHUB_FETCH_FAILED: 502,
         ReviewErrorCategory.PROVIDER_UNAVAILABLE: 502,
         ReviewErrorCategory.PROVIDER_MALFORMED_OUTPUT: 502,
+        ReviewErrorCategory.SETTINGS_LOCKED: 503,
         ReviewErrorCategory.INTERNAL: 500,
     }
 )

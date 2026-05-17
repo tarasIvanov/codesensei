@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 
 type ProbeStatus = 'ok' | 'down' | 'missing' | 'unknown' | 'pending'
 type ProviderStatus = 'ok' | 'unconfigured' | 'unreachable' | 'pending'
+type WorkerStatus = 'ok' | 'down' | 'unreachable' | 'pending'
 
 interface HealthEnvelope {
   status: 'ok' | 'degraded'
@@ -10,6 +11,7 @@ interface HealthEnvelope {
   redis: 'ok' | 'down'
   extensions: { vector: 'ok' | 'missing' | 'unknown' }
   providers: { llm: ProviderStatus; embedding: ProviderStatus }
+  worker: WorkerStatus
   failing?: string[]
 }
 
@@ -19,9 +21,10 @@ const redis = ref<ProbeStatus>('pending')
 const vector = ref<ProbeStatus>('pending')
 const llm = ref<ProviderStatus>('pending')
 const embedding = ref<ProviderStatus>('pending')
+const worker = ref<WorkerStatus>('pending')
 const errorMessage = ref<string>('')
 
-function colorFor(status: ProbeStatus | ProviderStatus): string {
+function colorFor(status: ProbeStatus | ProviderStatus | WorkerStatus): string {
   if (status === 'ok') return '#16a34a'
   if (status === 'pending') return '#9ca3af'
   if (status === 'unconfigured') return '#9ca3af'
@@ -38,6 +41,7 @@ onMounted(async () => {
     vector.value = body.extensions.vector
     llm.value = body.providers?.llm ?? 'unconfigured'
     embedding.value = body.providers?.embedding ?? 'unconfigured'
+    worker.value = body.worker ?? 'unreachable'
     if (body.status !== 'ok' && body.failing && body.failing.length) {
       errorMessage.value = 'Failing: ' + body.failing.join(', ')
     }
@@ -48,6 +52,7 @@ onMounted(async () => {
     vector.value = 'unknown'
     llm.value = 'unreachable'
     embedding.value = 'unreachable'
+    worker.value = 'unreachable'
     errorMessage.value = (err as Error).message || 'healthcheck call failed'
   }
 })
@@ -81,6 +86,10 @@ onMounted(async () => {
       <li>
         <span class="dot" :style="{ background: colorFor(embedding) }" aria-hidden="true"></span>
         embedding: <strong>{{ embedding }}</strong>
+      </li>
+      <li>
+        <span class="dot" :style="{ background: colorFor(worker) }" aria-hidden="true"></span>
+        worker: <strong>{{ worker }}</strong>
       </li>
     </ul>
     <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
