@@ -14,10 +14,11 @@ docker compose up --build -d  # pull images, build, start all services
 curl http://localhost:8000/healthz  # should return {"status":"ok",...}
 ```
 
-Open `http://localhost:5173` in a browser — the SPA shows two pages:
+Open `http://localhost:5173` in a browser — the SPA shows three pages:
 
-- `/` — live status of every component (db, redis, pgvector, LLM provider, embedding provider).
-- `/review` — paste a unified diff or a GitHub PR URL → structured findings rendered grouped by file. End-to-end demo of the LLM provider abstraction. See [`specs/003-pr-review-mvp/quickstart.md`](specs/003-pr-review-mvp/quickstart.md) for scenarios.
+- `/` — live status of every component (db, redis, pgvector, LLM provider, embedding provider, worker).
+- `/review` — paste a GitHub PR URL → structured findings rendered grouped by file. End-to-end demo of the LLM provider abstraction. See [`specs/003-pr-review-mvp/quickstart.md`](specs/003-pr-review-mvp/quickstart.md) for scenarios.
+- `/settings` — switch active LLM/embedding provider, manage API keys and model overrides without editing `.env`. Credentials are stored encrypted at rest (Fernet, keyed on `MASTER_KEY`). See [`specs/004-ops-quality-polish/quickstart.md`](specs/004-ops-quality-polish/quickstart.md).
 
 ### Port overrides
 
