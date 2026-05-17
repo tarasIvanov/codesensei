@@ -1,4 +1,5 @@
 """US1: LLM-output parser — happy + fail-fast on malformed."""
+
 from __future__ import annotations
 
 import json
@@ -84,17 +85,13 @@ def test_rejects_unknown_verdict():
 
 
 def test_rejects_unknown_severity():
-    raw = _envelope(
-        [{"file": "a", "line": 1, "severity": "catastrophic", "message": "x"}]
-    )
+    raw = _envelope([{"file": "a", "line": 1, "severity": "catastrophic", "message": "x"}])
     with pytest.raises(ReviewError):
         parse_review("openai", raw)
 
 
 def test_rejects_non_integer_line():
-    raw = _envelope(
-        [{"file": "a", "line": "many", "severity": "minor", "message": "x"}]
-    )
+    raw = _envelope([{"file": "a", "line": "many", "severity": "minor", "message": "x"}])
     with pytest.raises(ReviewError):
         parse_review("openai", raw)
 
@@ -113,9 +110,7 @@ def test_rejects_missing_message():
 
 def test_truncates_long_message_not_rejected():
     long = "x" * 3000
-    raw = _envelope(
-        [{"file": "a", "line": 1, "severity": "nit", "message": long}]
-    )
+    raw = _envelope([{"file": "a", "line": 1, "severity": "nit", "message": long}])
     _, findings = parse_review("openai", raw)
     assert len(findings[0].message) == 2000
     assert findings[0].message.endswith("…")

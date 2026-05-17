@@ -1,4 +1,5 @@
 """US2 unit tests: query derivation + token-budget trim (no DB)."""
+
 from __future__ import annotations
 
 import pytest
@@ -33,13 +34,7 @@ def test_derive_queries_extracts_one_per_hunk():
 
 
 def test_derive_queries_skips_pure_deletion_hunks():
-    diff = (
-        "diff --git a/a.py b/a.py\n"
-        "@@ -1,3 +1,1 @@\n"
-        " keeper\n"
-        "-removed line 1\n"
-        "-removed line 2\n"
-    )
+    diff = "diff --git a/a.py b/a.py\n@@ -1,3 +1,1 @@\n keeper\n-removed line 1\n-removed line 2\n"
     queries = derive_queries(diff)
     # The hunk has a context line " keeper" so it's not pure deletion → 1 query.
     assert len(queries) == 1

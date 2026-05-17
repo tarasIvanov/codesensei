@@ -1,4 +1,5 @@
 """US1+US3: ReviewService with AsyncMock LLMProvider."""
+
 from __future__ import annotations
 
 import asyncio
@@ -13,14 +14,7 @@ from codesensei.review.errors import ReviewError, ReviewErrorCategory
 from codesensei.review.schema import Severity, Verdict
 from codesensei.review.service import ReviewService
 
-_GOOD_DIFF = (
-    "diff --git a/x.py b/x.py\n"
-    "--- a/x.py\n"
-    "+++ b/x.py\n"
-    "@@ -1 +1 @@\n"
-    "-old\n"
-    "+new\n"
-)
+_GOOD_DIFF = "diff --git a/x.py b/x.py\n--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-old\n+new\n"
 
 
 @pytest.fixture(autouse=True)
@@ -45,9 +39,7 @@ def _install(monkeypatch, *, return_value=None, side_effect=None, provider_name=
     else:
         mock = AsyncMock(return_value=return_value)
     fake = _FakeProvider(provider_name, mock)
-    monkeypatch.setattr(
-        "codesensei.review.service.get_llm_provider", lambda: fake
-    )
+    monkeypatch.setattr("codesensei.review.service.get_llm_provider", lambda: fake)
     return mock, fake
 
 

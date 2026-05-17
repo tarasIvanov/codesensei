@@ -1,4 +1,5 @@
 """US3: OpenAI adapter — chat + embed happy paths + error normalization."""
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -43,9 +44,7 @@ def _install_fake_openai_client(monkeypatch, *, chat=None, embed=None):
 
 
 def _chat_response(text: str):
-    return SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content=text))]
-    )
+    return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=text))])
 
 
 def _embed_response(vectors: list[list[float]]):

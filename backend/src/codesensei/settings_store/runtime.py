@@ -11,6 +11,7 @@ stored settings effective without changing every call site, we:
    was empty too, the env-var becomes "" (which pydantic interprets as
    unconfigured).
 """
+
 from __future__ import annotations
 
 import os

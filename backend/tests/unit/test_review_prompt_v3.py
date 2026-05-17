@@ -1,4 +1,5 @@
 """US2 unit tests: USER prompt with RAG context block."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -33,12 +34,18 @@ def test_user_message_with_chunks_contains_context_block_first():
     diff = "diff --git a/x.py b/x.py\n@@ -1,1 +1,1 @@\n-a\n+b\n"
     chunks = [
         FakeChunk(
-            "billing.py", 10, 24,
-            "def compute_total(items):\n    return sum(i.price for i in items)", 42,
+            "billing.py",
+            10,
+            24,
+            "def compute_total(items):\n    return sum(i.price for i in items)",
+            42,
         ),
         FakeChunk(
-            "billing.py", 100, 110,
-            "class Invoice:\n    def __init__(self, lines):\n        self.lines = lines", 37,
+            "billing.py",
+            100,
+            110,
+            "class Invoice:\n    def __init__(self, lines):\n        self.lines = lines",
+            37,
         ),
     ]
     out = render_user_message(diff=diff, retrieved_chunks=chunks)

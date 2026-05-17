@@ -1,4 +1,5 @@
 """GitHub PR diff fetcher — REST + Accept: application/vnd.github.v3.diff."""
+
 from __future__ import annotations
 
 import re
@@ -13,9 +14,7 @@ _TIMEOUT_SECONDS = 10.0
 
 
 def _fail(message: str) -> ReviewError:
-    return ReviewError(
-        ReviewErrorCategory.GITHUB_FETCH_FAILED, message, retryable=False
-    )
+    return ReviewError(ReviewErrorCategory.GITHUB_FETCH_FAILED, message, retryable=False)
 
 
 async def fetch_pr_diff(pr_url: str) -> str:
@@ -53,9 +52,7 @@ async def fetch_pr_diff(pr_url: str) -> str:
     if code in (401, 403):
         raise _fail("GitHub auth failed for this PR — check the configured token.")
     if code == 404:
-        raise _fail(
-            "PR not found. Check the URL and that the token has access to this repo."
-        )
+        raise _fail("PR not found. Check the URL and that the token has access to this repo.")
     if 500 <= code < 600:
         raise _fail("GitHub is unavailable.")
     raise _fail(f"GitHub returned HTTP {code}.")

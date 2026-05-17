@@ -1,4 +1,5 @@
 """Unit tests for the envelope builder in healthcheck.py."""
+
 from codesensei.healthcheck import build_envelope
 from codesensei.providers.base import ProviderState
 

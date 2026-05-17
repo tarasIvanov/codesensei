@@ -1,4 +1,5 @@
 """Provider abstractions: protocols, types, probe-result shapes (data-model.md)."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

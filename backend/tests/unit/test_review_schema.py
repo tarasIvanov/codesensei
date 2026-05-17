@@ -1,4 +1,5 @@
 """US1: ReviewRequest validation + Finding model."""
+
 from __future__ import annotations
 
 import pytest
@@ -11,14 +12,7 @@ from codesensei.review.schema import (
     looks_like_unified_diff,
 )
 
-_GOOD_DIFF = (
-    "diff --git a/x.py b/x.py\n"
-    "--- a/x.py\n"
-    "+++ b/x.py\n"
-    "@@ -1 +1 @@\n"
-    "-old\n"
-    "+new\n"
-)
+_GOOD_DIFF = "diff --git a/x.py b/x.py\n--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-old\n+new\n"
 
 
 def test_request_accepts_unified_diff():
@@ -61,11 +55,11 @@ def test_request_rejects_non_diff_text():
 
 def test_request_rejects_malformed_pr_url():
     bad_urls = [
-        "http://github.com/o/r/pull/1",         # http, not https
-        "https://gitlab.com/o/r/pull/1",        # not github
-        "https://github.com/o/r/pulls/1",       # pulls (plural) — wrong
-        "https://github.com/o/r/pull/abc",      # non-numeric pr id
-        "https://github.com/o/r/issues/1",      # issues, not pull
+        "http://github.com/o/r/pull/1",  # http, not https
+        "https://gitlab.com/o/r/pull/1",  # not github
+        "https://github.com/o/r/pulls/1",  # pulls (plural) — wrong
+        "https://github.com/o/r/pull/abc",  # non-numeric pr id
+        "https://github.com/o/r/issues/1",  # issues, not pull
     ]
     for url in bad_urls:
         with pytest.raises(ReviewError) as exc:
@@ -124,16 +118,12 @@ def test_finding_truncates_long_message():
 
 def test_finding_truncates_long_suggestion():
     long = "y" * 5000
-    f = Finding(
-        file="a", line=1, severity=Severity.MAJOR, message="m", suggestion=long
-    )
+    f = Finding(file="a", line=1, severity=Severity.MAJOR, message="m", suggestion=long)
     assert f.suggestion is not None
     assert len(f.suggestion) == 4000
     assert f.suggestion.endswith("…")
 
 
 def test_finding_keeps_short_suggestion_intact():
-    f = Finding(
-        file="a", line=1, severity=Severity.NIT, message="m", suggestion="short"
-    )
+    f = Finding(file="a", line=1, severity=Severity.NIT, message="m", suggestion="short")
     assert f.suggestion == "short"

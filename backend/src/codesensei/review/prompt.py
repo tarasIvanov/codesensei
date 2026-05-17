@@ -1,4 +1,5 @@
 """Verbatim prompt template (frozen by contracts/llm_prompt_v3.md; SYSTEM unchanged from v2)."""
+
 # ruff: noqa: E501  -- prompt template is contract-frozen; reflowing changes meaning.
 from __future__ import annotations
 
@@ -14,6 +15,7 @@ class _ChunkLike(Protocol):
     end_line: int
     content: str
     token_count: int
+
 
 SYSTEM_MESSAGE = """\
 You are a senior code reviewer. You receive a single unified diff and respond with a structured JSON review. You MUST follow these rules without exception:
@@ -82,5 +84,8 @@ def build_messages(
 ) -> list[ChatMessage]:
     return [
         {"role": "system", "content": SYSTEM_MESSAGE},
-        {"role": "user", "content": render_user_message(diff=diff, retrieved_chunks=retrieved_chunks)},
+        {
+            "role": "user",
+            "content": render_user_message(diff=diff, retrieved_chunks=retrieved_chunks),
+        },
     ]

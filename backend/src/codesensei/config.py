@@ -1,4 +1,5 @@
 """Environment-driven settings (read by every other module)."""
+
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict

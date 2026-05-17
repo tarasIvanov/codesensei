@@ -1,4 +1,5 @@
 """arq WorkerSettings entrypoint."""
+
 from __future__ import annotations
 
 from arq.connections import RedisSettings

@@ -1,4 +1,5 @@
 """structlog JSON renderer to stdout (Constitution Workflow §3)."""
+
 import logging
 import sys
 

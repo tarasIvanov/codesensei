@@ -1,4 +1,5 @@
 """OpenAI adapter — chat + embeddings via the official openai SDK."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

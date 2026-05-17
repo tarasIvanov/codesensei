@@ -1,4 +1,5 @@
 """Integration tests for POST /api/review."""
+
 from __future__ import annotations
 
 import json
@@ -8,14 +9,7 @@ import pytest
 
 from codesensei.config import get_settings
 
-_GOOD_DIFF = (
-    "diff --git a/x.py b/x.py\n"
-    "--- a/x.py\n"
-    "+++ b/x.py\n"
-    "@@ -1 +1 @@\n"
-    "-old\n"
-    "+new\n"
-)
+_GOOD_DIFF = "diff --git a/x.py b/x.py\n--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-old\n+new\n"
 
 
 @pytest.fixture(autouse=True)
@@ -39,9 +33,7 @@ def _install_provider(monkeypatch, *, return_value=None, side_effect=None, name=
         AsyncMock(side_effect=side_effect) if side_effect else AsyncMock(return_value=return_value)
     )
     fake = _FakeProvider(name, mock)
-    monkeypatch.setattr(
-        "codesensei.review.service.get_llm_provider", lambda: fake
-    )
+    monkeypatch.setattr("codesensei.review.service.get_llm_provider", lambda: fake)
     return mock
 
 
@@ -90,17 +82,13 @@ async def test_post_review_both_diff_and_url(async_client):
 
 
 async def test_post_review_non_diff_text(async_client):
-    resp = await async_client.post(
-        "/api/review", json={"diff": "not a diff at all"}
-    )
+    resp = await async_client.post("/api/review", json={"diff": "not a diff at all"})
     assert resp.status_code == 400
     assert resp.json()["error"]["category"] == "invalid_input"
 
 
 async def test_post_review_malformed_pr_url(async_client):
-    resp = await async_client.post(
-        "/api/review", json={"pr_url": "https://gitlab.com/o/r/pull/1"}
-    )
+    resp = await async_client.post("/api/review", json={"pr_url": "https://gitlab.com/o/r/pull/1"})
     assert resp.status_code == 400
     assert resp.json()["error"]["category"] == "invalid_input"
 
@@ -117,9 +105,7 @@ async def test_post_review_malformed_llm_output(async_client, monkeypatch):
 async def test_post_review_provider_unavailable(async_client, monkeypatch):
     from codesensei.providers import ProviderError
 
-    _install_provider(
-        monkeypatch, side_effect=ProviderError("openai", "503 down", retryable=True)
-    )
+    _install_provider(monkeypatch, side_effect=ProviderError("openai", "503 down", retryable=True))
     resp = await async_client.post("/api/review", json={"diff": _GOOD_DIFF})
     assert resp.status_code == 502
     body = resp.json()
@@ -179,9 +165,7 @@ _API = "https://api.github.com/repos/octo/repo/pulls/7"
 _PR_URL = "https://github.com/octo/repo/pull/7"
 
 
-async def test_post_review_pr_url_happy(
-    async_client, monkeypatch, _respx_block_unintercepted_http
-):
+async def test_post_review_pr_url_happy(async_client, monkeypatch, _respx_block_unintercepted_http):
     import httpx
 
     _respx_block_unintercepted_http.get(_API).mock(
@@ -201,9 +185,7 @@ async def test_post_review_pr_url_happy(
     assert body["findings"][0]["file"] == "x.py"
 
 
-async def test_post_review_pr_url_404(
-    async_client, monkeypatch, _respx_block_unintercepted_http
-):
+async def test_post_review_pr_url_404(async_client, monkeypatch, _respx_block_unintercepted_http):
     import httpx
 
     _respx_block_unintercepted_http.get(_API).mock(
@@ -218,8 +200,6 @@ async def test_post_review_pr_url_404(
 
 
 async def test_post_review_pr_url_malformed(async_client):
-    resp = await async_client.post(
-        "/api/review", json={"pr_url": "https://gitlab.com/o/r/pull/1"}
-    )
+    resp = await async_client.post("/api/review", json={"pr_url": "https://gitlab.com/o/r/pull/1"})
     assert resp.status_code == 400
     assert resp.json()["error"]["category"] == "invalid_input"

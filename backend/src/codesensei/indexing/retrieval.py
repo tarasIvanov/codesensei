@@ -1,4 +1,5 @@
 """Per-hunk semantic retrieval over `code_chunks` for RAG-augmented review (feature 005, US2)."""
+
 from __future__ import annotations
 
 import re
@@ -72,9 +73,7 @@ def derive_queries(diff: str) -> list[str]:
         body = body_lines[1:] if body_lines else []
         # Keep only new-file content (lines without leading '-'); strip leading '+' / ' '.
         new_lines = [
-            ln[1:] if ln.startswith(("+", " ")) else ln
-            for ln in body
-            if not ln.startswith("-")
+            ln[1:] if ln.startswith(("+", " ")) else ln for ln in body if not ln.startswith("-")
         ]
         if not any(line.strip() for line in new_lines):
             continue

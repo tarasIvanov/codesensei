@@ -1,4 +1,5 @@
 """US1 unit tests: language-aware chunking."""
+
 from __future__ import annotations
 
 from pathlib import Path

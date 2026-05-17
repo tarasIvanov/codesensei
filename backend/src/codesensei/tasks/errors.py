@@ -1,4 +1,5 @@
 """Error envelope for /api/jobs/* (shape mirrors review.errors)."""
+
 from __future__ import annotations
 
 from enum import StrEnum

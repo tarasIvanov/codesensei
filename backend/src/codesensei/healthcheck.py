@@ -1,4 +1,5 @@
 """/healthz endpoint + envelope builder (003+004 contracts)."""
+
 import asyncio
 import time
 from typing import Any, Literal

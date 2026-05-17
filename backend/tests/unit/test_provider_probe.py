@@ -1,4 +1,5 @@
 """US4: provider probes — no paid API calls; correct state for each scenario."""
+
 from __future__ import annotations
 
 import httpx

@@ -1,4 +1,5 @@
 """Async SQLAlchemy engine + session factory + DB probe for /healthz."""
+
 import time
 from typing import TypedDict
 
@@ -15,8 +16,8 @@ from codesensei.config import get_settings
 
 
 class DbProbeResult(TypedDict):
-    db: str       # "ok" | "down"
-    vector: str   # "ok" | "missing" | "unknown"
+    db: str  # "ok" | "down"
+    vector: str  # "ok" | "missing" | "unknown"
 
 
 _engine: AsyncEngine | None = None

@@ -1,4 +1,5 @@
 """US1 unit tests: orchestrator (mocked DB + mocked EmbeddingProvider)."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -62,9 +63,7 @@ async def test_fill_repo_payload_too_large(monkeypatch, tmp_path: Path):
     monkeypatch.setattr("codesensei.indexing.service.chunk_repo", fake_chunk_repo)
     fake_provider = MagicMock(name="EmbeddingProvider", embed=AsyncMock())
     fake_provider.name = "openai"
-    monkeypatch.setattr(
-        "codesensei.indexing.service.get_embedding_provider", lambda: fake_provider
-    )
+    monkeypatch.setattr("codesensei.indexing.service.get_embedding_provider", lambda: fake_provider)
 
     with pytest.raises(IndexError) as exc:
         await svc._fill_repo(
@@ -89,15 +88,19 @@ async def test_fill_repo_empty_records_zero_chunks(monkeypatch, tmp_path: Path):
     monkeypatch.setattr("codesensei.indexing.service.chunk_repo", fake_chunk_repo)
     fake_provider = MagicMock(name="EmbeddingProvider", embed=AsyncMock())
     fake_provider.name = "openai"
-    monkeypatch.setattr(
-        "codesensei.indexing.service.get_embedding_provider", lambda: fake_provider
-    )
+    monkeypatch.setattr("codesensei.indexing.service.get_embedding_provider", lambda: fake_provider)
 
     # Replace replace_chunks with a stub that captures the call.
     captured = {}
 
     async def fake_replace_chunks(
-        session, *, repo_id, new_chunks, embedding_provider, embedding_model, indexed_at,
+        session,
+        *,
+        repo_id,
+        new_chunks,
+        embedding_provider,
+        embedding_model,
+        indexed_at,
     ):
         captured["repo_id"] = repo_id
         captured["count"] = len(new_chunks)
@@ -134,9 +137,7 @@ async def test_fill_repo_embedding_dim_mismatch(monkeypatch, tmp_path: Path):
     fake_provider.name = "openai"
     # Wrong dim — 768 instead of 1536.
     fake_provider.embed = AsyncMock(return_value=[[0.0] * 768])
-    monkeypatch.setattr(
-        "codesensei.indexing.service.get_embedding_provider", lambda: fake_provider
-    )
+    monkeypatch.setattr("codesensei.indexing.service.get_embedding_provider", lambda: fake_provider)
 
     with pytest.raises(IndexError) as exc:
         await svc._fill_repo(
@@ -154,7 +155,10 @@ def test_enforce_chunk_token_cap_splits_oversize_chunk(monkeypatch):
     # Build a chunk well over the cap: ~3000 lines of "x = 1" → roughly 9000 tokens.
     lines = ["x = 1"] * 3000
     big = ChunkSpec(
-        file_path="big.py", language="python", start_line=1, end_line=3000,
+        file_path="big.py",
+        language="python",
+        start_line=1,
+        end_line=3000,
         content="\n".join(lines),
     )
     out_chunks, out_counts = svc._enforce_chunk_token_cap([big])
@@ -197,14 +201,18 @@ async def test_fill_repo_happy_path_writes_chunks(monkeypatch, tmp_path: Path):
     fake_provider = MagicMock(name="EmbeddingProvider")
     fake_provider.name = "openai"
     fake_provider.embed = AsyncMock(return_value=[[0.0] * 1536, [0.0] * 1536])
-    monkeypatch.setattr(
-        "codesensei.indexing.service.get_embedding_provider", lambda: fake_provider
-    )
+    monkeypatch.setattr("codesensei.indexing.service.get_embedding_provider", lambda: fake_provider)
 
     captured = {}
 
     async def fake_replace_chunks(
-        session, *, repo_id, new_chunks, embedding_provider, embedding_model, indexed_at,
+        session,
+        *,
+        repo_id,
+        new_chunks,
+        embedding_provider,
+        embedding_model,
+        indexed_at,
     ):
         captured["chunks"] = list(new_chunks)
         return len(new_chunks)

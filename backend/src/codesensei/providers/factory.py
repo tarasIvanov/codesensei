@@ -1,4 +1,5 @@
 """Config-driven provider factories (lazy, lru_cache-keyed, no network on import)."""
+
 from __future__ import annotations
 
 from functools import lru_cache

@@ -1,4 +1,5 @@
 """Async Redis client + Redis probe for /healthz."""
+
 import time
 
 import redis.asyncio as aioredis

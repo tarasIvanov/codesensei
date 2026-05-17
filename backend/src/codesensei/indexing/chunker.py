@@ -1,4 +1,5 @@
 """Language-aware chunking — Python AST, Markdown headings, sliding-window fallback."""
+
 from __future__ import annotations
 
 import ast
@@ -74,8 +75,15 @@ def iter_source_files(root: Path) -> Iterator[Path]:
     files larger than 200 KB, files with unsupported extensions.
     """
     skip_dirs = {
-        ".git", ".venv", "venv", "node_modules", "__pycache__",
-        "dist", "build", ".idea", ".vscode",
+        ".git",
+        ".venv",
+        "venv",
+        "node_modules",
+        "__pycache__",
+        "dist",
+        "build",
+        ".idea",
+        ".vscode",
     }
     for path in root.rglob("*"):
         if path.is_dir():

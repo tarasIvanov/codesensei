@@ -1,4 +1,5 @@
 """Thin async wrapper around arq for FastAPI handlers."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -101,9 +102,7 @@ async def lookup_job(job_id: str) -> dict[str, Any]:
         if status == JobStatus.complete:
             result_info = await job.result_info()
             if result_info is not None:
-                body["completed_at"] = result_info.finish_time.astimezone(
-                    UTC
-                ).isoformat()
+                body["completed_at"] = result_info.finish_time.astimezone(UTC).isoformat()
                 body["result"] = result_info.result
         return body
     finally:

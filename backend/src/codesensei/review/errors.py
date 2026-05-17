@@ -1,4 +1,5 @@
 """Review error envelope: category → HTTP code map + exception type."""
+
 from __future__ import annotations
 
 from enum import StrEnum
@@ -14,6 +15,11 @@ class ReviewErrorCategory(StrEnum):
     SETTINGS_LOCKED = "settings_locked"
     REPO_NOT_READY = "repo_not_ready"
     EMBEDDING_MISMATCH = "embedding_mismatch"
+    GITHUB_AUTH_FAILED = "github_auth_failed"
+    GITHUB_PR_NOT_FOUND = "github_pr_not_found"
+    GITHUB_REVIEW_REJECTED = "github_review_rejected"
+    GITHUB_API_UNAVAILABLE = "github_api_unavailable"
+    GITHUB_RATE_LIMITED = "github_rate_limited"
     INTERNAL = "internal"
 
 
@@ -27,6 +33,11 @@ HTTP_FOR_CATEGORY: MappingProxyType[ReviewErrorCategory, int] = MappingProxyType
         ReviewErrorCategory.SETTINGS_LOCKED: 503,
         ReviewErrorCategory.REPO_NOT_READY: 409,
         ReviewErrorCategory.EMBEDDING_MISMATCH: 422,
+        ReviewErrorCategory.GITHUB_AUTH_FAILED: 401,
+        ReviewErrorCategory.GITHUB_PR_NOT_FOUND: 404,
+        ReviewErrorCategory.GITHUB_REVIEW_REJECTED: 502,
+        ReviewErrorCategory.GITHUB_API_UNAVAILABLE: 502,
+        ReviewErrorCategory.GITHUB_RATE_LIMITED: 429,
         ReviewErrorCategory.INTERNAL: 500,
     }
 )
@@ -41,21 +52,26 @@ class ReviewError(Exception):
         message: str,
         *,
         retryable: bool = False,
+        retry_after_seconds: int | None = None,
     ) -> None:
         super().__init__(f"{category.value}: {message}")
         self.category = category
         self.message = message
         self.retryable = retryable
+        self.retry_after_seconds = retry_after_seconds
 
     @property
     def http_status(self) -> int:
         return HTTP_FOR_CATEGORY[self.category]
 
-    def to_envelope(self) -> dict[str, dict[str, object]]:
-        return {
+    def to_envelope(self) -> dict[str, object]:
+        envelope: dict[str, object] = {
             "error": {
                 "category": self.category.value,
                 "message": self.message,
                 "retryable": self.retryable,
             }
         }
+        if self.retry_after_seconds is not None:
+            envelope["retry_after_seconds"] = self.retry_after_seconds
+        return envelope

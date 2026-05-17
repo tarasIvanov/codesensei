@@ -1,4 +1,5 @@
 """Index error envelope: category → HTTP code map + exception type."""
+
 from __future__ import annotations
 
 from enum import StrEnum

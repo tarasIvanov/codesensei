@@ -1,4 +1,5 @@
 """US3: classify_http_status truth table + ProviderError formatting."""
+
 from __future__ import annotations
 
 import pytest

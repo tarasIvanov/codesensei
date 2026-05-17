@@ -1,4 +1,5 @@
 """Wire-shape pydantic models for POST /api/review (per data-model.md)."""
+
 from __future__ import annotations
 
 import re

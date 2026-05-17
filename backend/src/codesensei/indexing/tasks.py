@@ -1,4 +1,5 @@
 """arq job — index a repository in the background (long-running)."""
+
 from __future__ import annotations
 
 from typing import Any

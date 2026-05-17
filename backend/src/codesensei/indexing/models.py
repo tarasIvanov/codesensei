@@ -1,4 +1,5 @@
 """SQLAlchemy mapped classes for `repos` and `code_chunks` (feature 005)."""
+
 from __future__ import annotations
 
 from datetime import datetime

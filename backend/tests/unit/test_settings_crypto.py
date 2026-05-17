@@ -1,4 +1,5 @@
 """US2: Fernet round-trip + MASTER_KEY guard."""
+
 from __future__ import annotations
 
 import pytest
