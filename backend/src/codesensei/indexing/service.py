@@ -14,6 +14,7 @@ from redis.exceptions import RedisError
 from codesensei.config import get_settings
 from codesensei.db import get_sessionmaker
 from codesensei.indexing.chunker import (
+    ChunkSpec,
     chunk_repo,
     count_source_files,
 )
@@ -36,6 +37,7 @@ MAX_CHUNKS_PER_REPO = 5_000
 SYNC_FILE_THRESHOLD = 200
 EMBED_BATCH_SIZE = 100
 EXPECTED_EMBEDDING_DIM = 1536
+MAX_CHUNK_TOKENS = 7_000  # OpenAI text-embedding-3-small caps at 8192; leave headroom.
 
 _logger = structlog.get_logger()
 
@@ -88,6 +90,85 @@ class IndexingService:
     @classmethod
     def from_request(cls) -> IndexingService:
         return cls(get_sessionmaker())
+
+    def _enforce_chunk_token_cap(
+        self, chunks: list[ChunkSpec]
+    ) -> tuple[list[ChunkSpec], list[int]]:
+        """Split any chunk whose token count exceeds MAX_CHUNK_TOKENS into line sub-windows.
+
+        Returns the (possibly expanded) chunk list and the matching token counts.
+        Splitting is deterministic: a chunk's lines are sliced into halves until each
+        half fits the cap. Sub-chunk line numbers stay anchored to the original file.
+        """
+        out_chunks: list[ChunkSpec] = []
+        out_counts: list[int] = []
+        for chunk in chunks:
+            count = len(self._encoder.encode(chunk.content))
+            if count <= MAX_CHUNK_TOKENS:
+                out_chunks.append(chunk)
+                out_counts.append(count)
+                continue
+            # Split by lines; halve until each piece fits.
+            lines = chunk.content.splitlines()
+            if len(lines) <= 1:
+                # Single huge line — fall back to truncation (rare; e.g. minified JS).
+                approx_chars = MAX_CHUNK_TOKENS * 3
+                trimmed = chunk.content[:approx_chars]
+                out_chunks.append(
+                    ChunkSpec(
+                        file_path=chunk.file_path,
+                        language=chunk.language,
+                        start_line=chunk.start_line,
+                        end_line=chunk.end_line,
+                        content=trimmed,
+                    )
+                )
+                out_counts.append(len(self._encoder.encode(trimmed)))
+                continue
+            sub_chunks = self._split_chunk_recursive(chunk, lines)
+            for sc in sub_chunks:
+                sc_count = len(self._encoder.encode(sc.content))
+                out_chunks.append(sc)
+                out_counts.append(sc_count)
+        return out_chunks, out_counts
+
+    def _split_chunk_recursive(
+        self, original: ChunkSpec, lines: list[str]
+    ) -> list[ChunkSpec]:
+        """Halve `lines` until each piece fits MAX_CHUNK_TOKENS."""
+        content = "\n".join(lines)
+        if len(self._encoder.encode(content)) <= MAX_CHUNK_TOKENS:
+            return [
+                ChunkSpec(
+                    file_path=original.file_path,
+                    language=original.language,
+                    start_line=original.start_line,
+                    end_line=original.start_line + len(lines) - 1,
+                    content=content,
+                )
+            ]
+        mid = max(1, len(lines) // 2)
+        left = self._split_chunk_recursive(
+            ChunkSpec(
+                file_path=original.file_path,
+                language=original.language,
+                start_line=original.start_line,
+                end_line=original.start_line + mid - 1,
+                content="\n".join(lines[:mid]),
+            ),
+            lines[:mid],
+        )
+        right = self._split_chunk_recursive(
+            ChunkSpec(
+                file_path=original.file_path,
+                language=original.language,
+                start_line=original.start_line + mid,
+                end_line=original.start_line + len(lines) - 1,
+                content="\n".join(lines[mid:]),
+            ),
+            lines[mid:],
+        )
+        return left + right
 
     # ------- HTTP-facing entry points -------
 
@@ -323,9 +404,14 @@ class IndexingService:
             }
 
         # Token counts (deterministic for budget math + invariant for indexing cost reports).
-        for c in chunks:  # noqa: B007 — readability
-            pass
-        token_counts = [len(self._encoder.encode(c.content)) for c in chunks]
+        # Split any chunk that exceeds the embedding model's per-input token cap into sub-windows.
+        chunks, token_counts = self._enforce_chunk_token_cap(chunks)
+        if len(chunks) > MAX_CHUNKS_PER_REPO:
+            raise IndexError(
+                IndexErrorCategory.PAYLOAD_TOO_LARGE,
+                f"Repository would produce {len(chunks)} chunks (after splitting "
+                f"oversize chunks); the per-repo cap is {MAX_CHUNKS_PER_REPO}.",
+            )
 
         # Embed in batches.
         try:

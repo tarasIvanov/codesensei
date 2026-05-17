@@ -31,13 +31,18 @@ async def _retrieve_context(repo_id: UUID, diff: str) -> RetrievalResult:
         return await service.search(repo_id=repo_id, diff=diff)
     except IndexError as exc:
         if exc.category == IndexErrorCategory.EMBEDDING_MISMATCH:
-            # 422 — surfaced as a distinct ReviewError category-message pair.
             raise ReviewError(
-                ReviewErrorCategory.INVALID_INPUT,
+                ReviewErrorCategory.EMBEDDING_MISMATCH,
                 exc.message,
                 retryable=False,
             ) from exc
-        if exc.category in (IndexErrorCategory.ALREADY_INDEXING, IndexErrorCategory.NOT_FOUND):
+        if exc.category == IndexErrorCategory.ALREADY_INDEXING:
+            raise ReviewError(
+                ReviewErrorCategory.REPO_NOT_READY,
+                exc.message,
+                retryable=exc.retryable,
+            ) from exc
+        if exc.category == IndexErrorCategory.NOT_FOUND:
             raise ReviewError(
                 ReviewErrorCategory.INVALID_INPUT,
                 exc.message,

@@ -145,6 +145,43 @@ async def test_fill_repo_embedding_dim_mismatch(monkeypatch, tmp_path: Path):
     assert exc.value.category == IndexErrorCategory.EMBEDDING_DIMENSION_MISMATCH
 
 
+def test_enforce_chunk_token_cap_splits_oversize_chunk(monkeypatch):
+    """Chunks above MAX_CHUNK_TOKENS must be split into sub-windows under the cap."""
+    from codesensei.indexing.chunker import ChunkSpec
+    from codesensei.indexing.service import MAX_CHUNK_TOKENS, IndexingService
+
+    svc = IndexingService(sessionmaker=lambda: None)
+    # Build a chunk well over the cap: ~3000 lines of "x = 1" → roughly 9000 tokens.
+    lines = ["x = 1"] * 3000
+    big = ChunkSpec(
+        file_path="big.py", language="python", start_line=1, end_line=3000,
+        content="\n".join(lines),
+    )
+    out_chunks, out_counts = svc._enforce_chunk_token_cap([big])
+    assert len(out_chunks) >= 2  # split happened
+    # No piece exceeds the cap.
+    assert all(c <= MAX_CHUNK_TOKENS for c in out_counts)
+    # Line numbers stay anchored to the original file (1-indexed, monotonic, contiguous).
+    for sc in out_chunks:
+        assert sc.start_line >= 1
+        assert sc.end_line >= sc.start_line
+    sorted_chunks = sorted(out_chunks, key=lambda c: c.start_line)
+    for a, b in zip(sorted_chunks, sorted_chunks[1:], strict=False):
+        assert b.start_line == a.end_line + 1
+
+
+def test_enforce_chunk_token_cap_passes_small_chunk_through(monkeypatch):
+    from codesensei.indexing.chunker import ChunkSpec
+    from codesensei.indexing.service import IndexingService
+
+    svc = IndexingService(sessionmaker=lambda: None)
+    small = ChunkSpec("a.py", "python", 1, 5, "def foo():\n    return 1")
+    out_chunks, out_counts = svc._enforce_chunk_token_cap([small])
+    assert len(out_chunks) == 1
+    assert out_chunks[0] is small
+    assert out_counts[0] > 0
+
+
 @pytest.mark.asyncio
 async def test_fill_repo_happy_path_writes_chunks(monkeypatch, tmp_path: Path):
     svc, _ = _make_service_with_mocks(monkeypatch)

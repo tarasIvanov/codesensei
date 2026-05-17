@@ -12,6 +12,8 @@ class ReviewErrorCategory(StrEnum):
     PROVIDER_UNAVAILABLE = "provider_unavailable"
     PROVIDER_MALFORMED_OUTPUT = "provider_malformed_output"
     SETTINGS_LOCKED = "settings_locked"
+    REPO_NOT_READY = "repo_not_ready"
+    EMBEDDING_MISMATCH = "embedding_mismatch"
     INTERNAL = "internal"
 
 
@@ -23,6 +25,8 @@ HTTP_FOR_CATEGORY: MappingProxyType[ReviewErrorCategory, int] = MappingProxyType
         ReviewErrorCategory.PROVIDER_UNAVAILABLE: 502,
         ReviewErrorCategory.PROVIDER_MALFORMED_OUTPUT: 502,
         ReviewErrorCategory.SETTINGS_LOCKED: 503,
+        ReviewErrorCategory.REPO_NOT_READY: 409,
+        ReviewErrorCategory.EMBEDDING_MISMATCH: 422,
         ReviewErrorCategory.INTERNAL: 500,
     }
 )
