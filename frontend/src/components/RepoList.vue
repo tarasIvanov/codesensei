@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+import Badge from './primitives/Badge.vue'
+import Button from './primitives/Button.vue'
+import Collapsible from './primitives/Collapsible.vue'
 import type { RepoEntry } from '../api/repos'
 
-const props = defineProps<{
-  repos: RepoEntry[]
-}>()
+const props = defineProps<{ repos: RepoEntry[] }>()
 
 defineEmits<{
   (e: 'delete', repoId: string): void
@@ -23,130 +24,103 @@ function formatTimestamp(iso: string | null): string {
   }
 }
 
+function badgeToneFor(status: RepoEntry['status']): 'success' | 'info' | 'danger' | 'neutral' {
+  switch (status) {
+    case 'ready':
+      return 'success'
+    case 'indexing':
+      return 'info'
+    case 'failed':
+      return 'danger'
+    default:
+      return 'neutral'
+  }
+}
+
 function statusLabel(status: RepoEntry['status']): string {
-  return status === 'ready' ? 'ready' : status === 'indexing' ? 'indexing…' : 'failed'
+  if (status === 'indexing') return 'INDEXING…'
+  return status.toUpperCase()
 }
 </script>
 
 <template>
-  <div v-if="sortedRepos.length === 0" class="empty">
+  <div
+    v-if="sortedRepos.length === 0"
+    class="px-4 py-3 text-sm text-muted"
+    :style="{
+      border: '1px dashed var(--color-border)',
+      borderRadius: 'var(--radius-md)',
+    }"
+  >
     No repositories indexed yet. Submit one above.
   </div>
-  <table v-else class="table">
-    <thead>
-      <tr>
-        <th>Source</th>
-        <th>Status</th>
-        <th>Chunks</th>
-        <th>Indexed at</th>
-        <th>Provider · Model</th>
-        <th class="actions-col">Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr v-for="r in sortedRepos" :key="r.repo_id">
-        <td><code>{{ r.source }}</code></td>
-        <td>
-          <span class="pill" :data-status="r.status">{{ statusLabel(r.status) }}</span>
-          <span v-if="r.status === 'failed' && r.last_error" class="error-snippet" :title="r.last_error">
-            (see error)
-          </span>
-        </td>
-        <td>{{ r.chunk_count }}</td>
-        <td>{{ formatTimestamp(r.indexed_at) }}</td>
-        <td>{{ r.embedding_provider || '—' }} · {{ r.embedding_model || '—' }}</td>
-        <td class="actions-col">
-          <button class="action" :disabled="r.status === 'indexing'" @click="$emit('reindex', r)">
-            Re-index
-          </button>
-          <button class="action danger" :disabled="r.status === 'indexing'" @click="$emit('delete', r.repo_id)">
-            Delete
-          </button>
-        </td>
-      </tr>
-    </tbody>
-  </table>
+  <div v-else class="flex flex-col gap-2">
+    <Collapsible v-for="r in sortedRepos" :key="r.repo_id" :default-open="false">
+      <template #header="{ open }">
+        <div
+          class="flex items-center justify-between gap-3 px-4 py-3 surface-card"
+          :style="{ borderRadius: open ? 'var(--radius-md) var(--radius-md) 0 0' : 'var(--radius-md)' }"
+        >
+          <div class="flex items-center gap-3 min-w-0 flex-1">
+            <span
+              class="text-xs text-muted"
+              aria-hidden="true"
+            >{{ open ? '▾' : '▸' }}</span>
+            <code
+              class="font-mono text-sm truncate"
+              :style="{ color: 'var(--color-text)' }"
+            >{{ r.source }}</code>
+          </div>
+          <Badge :tone="badgeToneFor(r.status)">{{ statusLabel(r.status) }}</Badge>
+        </div>
+      </template>
+      <template #body>
+        <div
+          class="px-4 py-3 surface-card text-sm"
+          :style="{
+            borderTop: 'none',
+            borderRadius: '0 0 var(--radius-md) var(--radius-md)',
+          }"
+        >
+          <dl class="grid grid-cols-2 gap-x-4 gap-y-2 m-0">
+            <dt class="text-xs uppercase tracking-wide text-muted">Chunks</dt>
+            <dd class="font-mono" :style="{ color: 'var(--color-text)' }">
+              {{ r.chunk_count }}
+            </dd>
+            <dt class="text-xs uppercase tracking-wide text-muted">Indexed at</dt>
+            <dd class="font-mono" :style="{ color: 'var(--color-text)' }">
+              {{ formatTimestamp(r.indexed_at) }}
+            </dd>
+            <dt class="text-xs uppercase tracking-wide text-muted">Provider · Model</dt>
+            <dd class="font-mono" :style="{ color: 'var(--color-text)' }">
+              {{ r.embedding_provider || '—' }} · {{ r.embedding_model || '—' }}
+            </dd>
+            <template v-if="r.status === 'failed' && r.last_error">
+              <dt class="text-xs uppercase tracking-wide text-muted">Last error</dt>
+              <dd
+                class="font-mono text-xs break-words"
+                :style="{ color: 'var(--color-danger-fg)' }"
+              >
+                {{ r.last_error }}
+              </dd>
+            </template>
+          </dl>
+          <div class="flex justify-end gap-2 mt-3">
+            <Button
+              variant="secondary"
+              size="sm"
+              :disabled="r.status === 'indexing'"
+              @click="$emit('reindex', r)"
+            >Re-index</Button>
+            <Button
+              variant="danger"
+              size="sm"
+              :disabled="r.status === 'indexing'"
+              @click="$emit('delete', r.repo_id)"
+            >Delete</Button>
+          </div>
+        </div>
+      </template>
+    </Collapsible>
+  </div>
 </template>
-
-<style scoped>
-.empty {
-  margin: 0.6rem 0;
-  padding: 0.7rem 0.85rem;
-  background: #f8fafc;
-  border: 1px dashed #cbd5e1;
-  border-radius: 0.5rem;
-  color: #64748b;
-  font-size: 0.9rem;
-}
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.88rem;
-  margin-top: 0.6rem;
-}
-.table th,
-.table td {
-  text-align: left;
-  padding: 0.45rem 0.55rem;
-  border-bottom: 1px solid #e2e8f0;
-  vertical-align: middle;
-}
-.table th {
-  color: #475569;
-  font-weight: 600;
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-code {
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 0.8rem;
-}
-.pill {
-  display: inline-block;
-  padding: 0.1rem 0.5rem;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-.pill[data-status='ready'] {
-  background: #ecfdf5;
-  color: #065f46;
-}
-.pill[data-status='indexing'] {
-  background: #fef3c7;
-  color: #92400e;
-}
-.pill[data-status='failed'] {
-  background: #fef2f2;
-  color: #991b1b;
-}
-.error-snippet {
-  margin-left: 0.35rem;
-  color: #b91c1c;
-  cursor: help;
-  font-size: 0.75rem;
-}
-.actions-col {
-  text-align: right;
-  white-space: nowrap;
-}
-.action {
-  background: #2563eb;
-  color: #ffffff;
-  border: 0;
-  border-radius: 0.35rem;
-  padding: 0.25rem 0.65rem;
-  margin-left: 0.3rem;
-  font-size: 0.78rem;
-  cursor: pointer;
-}
-.action.danger {
-  background: #b91c1c;
-}
-.action:disabled {
-  background: #cbd5e1;
-  color: #64748b;
-  cursor: not-allowed;
-}
-</style>

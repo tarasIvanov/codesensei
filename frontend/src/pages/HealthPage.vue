@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+
+import Card from '../components/primitives/Card.vue'
+import StatusDot from '../components/primitives/StatusDot.vue'
 
 type ProbeStatus = 'ok' | 'down' | 'missing' | 'unknown' | 'pending'
 type ProviderStatus = 'ok' | 'unconfigured' | 'unreachable' | 'pending'
 type WorkerStatus = 'ok' | 'down' | 'unreachable' | 'pending'
+
+type AnyStatus = ProbeStatus | ProviderStatus | WorkerStatus
 
 interface HealthEnvelope {
   status: 'ok' | 'degraded'
@@ -15,20 +20,23 @@ interface HealthEnvelope {
   failing?: string[]
 }
 
-const overall = ref<ProbeStatus>('pending')
-const db = ref<ProbeStatus>('pending')
-const redis = ref<ProbeStatus>('pending')
-const vector = ref<ProbeStatus>('pending')
-const llm = ref<ProviderStatus>('pending')
-const embedding = ref<ProviderStatus>('pending')
-const worker = ref<WorkerStatus>('pending')
-const errorMessage = ref<string>('')
+interface Row {
+  label: string
+  status: AnyStatus
+  error?: string | null
+}
 
-function colorFor(status: ProbeStatus | ProviderStatus | WorkerStatus): string {
-  if (status === 'ok') return '#16a34a'
-  if (status === 'pending') return '#9ca3af'
-  if (status === 'unconfigured') return '#9ca3af'
-  return '#dc2626'
+const overall = ref<ProbeStatus>('pending')
+const rows = ref<Row[]>([])
+const errorMessage = ref('')
+
+function dotState(status: AnyStatus): 'ok' | 'degraded' | 'error' {
+  if (status === 'ok') return 'ok'
+  if (status === 'pending') return 'degraded'
+  if (status === 'unconfigured') return 'degraded'
+  if (status === 'missing') return 'degraded'
+  if (status === 'unknown') return 'degraded'
+  return 'error'
 }
 
 onMounted(async () => {
@@ -36,101 +44,70 @@ onMounted(async () => {
     const response = await fetch('/api/healthz')
     const body = (await response.json()) as HealthEnvelope
     overall.value = body.status === 'ok' ? 'ok' : 'down'
-    db.value = body.db
-    redis.value = body.redis
-    vector.value = body.extensions.vector
-    llm.value = body.providers?.llm ?? 'unconfigured'
-    embedding.value = body.providers?.embedding ?? 'unconfigured'
-    worker.value = body.worker ?? 'unreachable'
+    rows.value = [
+      { label: 'db', status: body.db },
+      { label: 'redis', status: body.redis },
+      { label: 'pgvector', status: body.extensions.vector },
+      { label: 'llm', status: body.providers?.llm ?? 'unconfigured' },
+      { label: 'embedding', status: body.providers?.embedding ?? 'unconfigured' },
+      { label: 'worker', status: body.worker ?? 'unreachable' },
+    ]
     if (body.status !== 'ok' && body.failing && body.failing.length) {
       errorMessage.value = 'Failing: ' + body.failing.join(', ')
     }
   } catch (err) {
     overall.value = 'down'
-    db.value = 'down'
-    redis.value = 'down'
-    vector.value = 'unknown'
-    llm.value = 'unreachable'
-    embedding.value = 'unreachable'
-    worker.value = 'unreachable'
+    rows.value = [
+      { label: 'db', status: 'down' },
+      { label: 'redis', status: 'down' },
+      { label: 'pgvector', status: 'unknown' },
+      { label: 'llm', status: 'unreachable' },
+      { label: 'embedding', status: 'unreachable' },
+      { label: 'worker', status: 'unreachable' },
+    ]
     errorMessage.value = (err as Error).message || 'healthcheck call failed'
   }
 })
+
+const overallText = computed(() => `${overall.value.toUpperCase()}`)
 </script>
 
 <template>
-  <section>
-    <h1>CodeSensei</h1>
-    <p class="subtitle">Infrastructure scaffold — healthcheck</p>
-    <ul class="badges">
-      <li>
-        <span class="dot" :style="{ background: colorFor(overall) }" aria-hidden="true"></span>
-        overall: <strong>{{ overall }}</strong>
-      </li>
-      <li>
-        <span class="dot" :style="{ background: colorFor(db) }" aria-hidden="true"></span>
-        db: <strong>{{ db }}</strong>
-      </li>
-      <li>
-        <span class="dot" :style="{ background: colorFor(redis) }" aria-hidden="true"></span>
-        redis: <strong>{{ redis }}</strong>
-      </li>
-      <li>
-        <span class="dot" :style="{ background: colorFor(vector) }" aria-hidden="true"></span>
-        pgvector: <strong>{{ vector }}</strong>
-      </li>
-      <li>
-        <span class="dot" :style="{ background: colorFor(llm) }" aria-hidden="true"></span>
-        llm: <strong>{{ llm }}</strong>
-      </li>
-      <li>
-        <span class="dot" :style="{ background: colorFor(embedding) }" aria-hidden="true"></span>
-        embedding: <strong>{{ embedding }}</strong>
-      </li>
-      <li>
-        <span class="dot" :style="{ background: colorFor(worker) }" aria-hidden="true"></span>
-        worker: <strong>{{ worker }}</strong>
+  <Card>
+    <template #header>
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <h1 class="text-2xl font-semibold m-0" :style="{ color: 'var(--color-text)' }">
+            CodeSensei status
+          </h1>
+          <p class="text-sm text-muted m-0 mt-1">
+            Live healthcheck for every backend dependency and provider.
+          </p>
+        </div>
+        <StatusDot
+          :state="dotState(overall)"
+          :label="overallText"
+          :error="errorMessage || null"
+        />
+      </div>
+    </template>
+    <ul class="m-0 p-0 list-none flex flex-col gap-3">
+      <li
+        v-for="row in rows"
+        :key="row.label"
+        class="flex items-center gap-3 font-mono text-sm"
+      >
+        <StatusDot
+          :state="dotState(row.status)"
+          :label="row.label"
+          :error="row.status === 'ok' ? null : String(row.status)"
+        />
+        <span class="text-muted">·</span>
+        <strong :style="{ color: 'var(--color-text)' }">{{ row.status }}</strong>
       </li>
     </ul>
-    <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
-  </section>
+    <p v-if="errorMessage" class="text-sm mt-4" :style="{ color: 'var(--color-danger-fg)' }">
+      {{ errorMessage }}
+    </p>
+  </Card>
 </template>
-
-<style scoped>
-section {
-  font-family: system-ui, -apple-system, Segoe UI, sans-serif;
-  color: #0f172a;
-}
-h1 {
-  margin: 0 0 0.25rem;
-  font-size: 1.5rem;
-}
-.subtitle {
-  color: #64748b;
-  margin: 0 0 1rem;
-}
-.badges {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-.badges li {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.35rem 0;
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 0.95rem;
-}
-.dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  display: inline-block;
-}
-.error {
-  margin-top: 1rem;
-  color: #dc2626;
-  font-size: 0.85rem;
-}
-</style>
