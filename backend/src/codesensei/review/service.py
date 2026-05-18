@@ -3,17 +3,80 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import time
+from dataclasses import asdict
 from uuid import UUID
 
+import structlog
+
 from codesensei.config import get_settings
+from codesensei.db import get_sessionmaker
+from codesensei.indexing import store as repos_store
 from codesensei.indexing.errors import IndexError, IndexErrorCategory
 from codesensei.indexing.retrieval import RetrievalResult, RetrievalService
 from codesensei.providers import ProviderError, get_llm_provider
 from codesensei.review.errors import ReviewError, ReviewErrorCategory
+from codesensei.review.git_temporal import (
+    FileTemporalPool,
+    collapse_diff_to_windows,
+    fetch_temporal_pool_for_review,
+)
 from codesensei.review.parser import parse_review
 from codesensei.review.prompt import build_messages
-from codesensei.review.schema import ReviewResult
+from codesensei.review.schema import Finding, ReviewResult, TemporalEntry
+
+_logger = structlog.get_logger(__name__)
+
+_HUNK_HEADER_RE = re.compile(r"^@@\s-\d+(?:,\d+)?\s\+(\d+)(?:,(\d+))?\s@@")
+_FILE_HEADER_RE = re.compile(r"^\+\+\+ b/(.+)$")
+
+
+def _extract_rhs_hunks(diff: str) -> dict[str, list[tuple[int, int]]]:
+    """Parse a unified diff into ``{file_path: [(start_line, length), ...]}``."""
+    out: dict[str, list[tuple[int, int]]] = {}
+    current_file: str | None = None
+    for raw in diff.splitlines():
+        m_file = _FILE_HEADER_RE.match(raw)
+        if m_file:
+            current_file = m_file.group(1).strip()
+            continue
+        if current_file is None:
+            continue
+        m_hunk = _HUNK_HEADER_RE.match(raw)
+        if not m_hunk:
+            continue
+        start = int(m_hunk.group(1))
+        length = int(m_hunk.group(2)) if m_hunk.group(2) else 1
+        if start <= 0 or length <= 0:
+            continue
+        out.setdefault(current_file, []).append((start, length))
+    return out
+
+
+async def _resolve_repo_source(repo_id: UUID) -> str | None:
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        repo = await repos_store.fetch_repo(session, repo_id)
+        if repo is None:
+            return None
+        return repo.source
+
+
+def _attach_temporal_context(findings: list[Finding], pool: FileTemporalPool) -> None:
+    """Route the in-memory pool back onto each finding via (file, line) match."""
+    if not pool:
+        return
+    for finding in findings:
+        if finding.line is None:
+            continue
+        windows = pool.get(finding.file)
+        if not windows:
+            continue
+        for window, entries in windows:
+            if window.start_line <= finding.line <= window.end_line and entries:
+                finding.temporal_context = [TemporalEntry(**asdict(entry)) for entry in entries]
+                break
 
 
 def _enforce_size(diff: str) -> None:
@@ -63,10 +126,32 @@ async def _run_chat(diff: str, *, repo_id: UUID | None = None) -> ReviewResult:
     if repo_id is not None:
         retrieved = await _retrieve_context(repo_id, diff)
 
+    temporal_pool: FileTemporalPool = {}
+    if repo_id is not None:
+        repo_source = await _resolve_repo_source(repo_id)
+        if repo_source:
+            hunks_by_file = _extract_rhs_hunks(diff)
+            windows_by_file = collapse_diff_to_windows(hunks_by_file)
+            if windows_by_file:
+                temporal_pool, summary = await fetch_temporal_pool_for_review(
+                    repo_id=repo_id,
+                    repo_source=repo_source,
+                    windows_by_file=windows_by_file,
+                )
+                _logger.info(
+                    "temporal_fetch",
+                    repo_id=str(repo_id),
+                    files_count=summary.files_count,
+                    entries_total=summary.entries_total,
+                    elapsed_ms=summary.elapsed_ms,
+                    budget_exceeded=summary.budget_exceeded,
+                )
+
     provider = get_llm_provider()
     messages = build_messages(
         diff,
         retrieved_chunks=retrieved.selected if retrieved else None,
+        temporal_pool=temporal_pool or None,
     )
     timeout = get_settings().review_llm_timeout_s
     started = time.perf_counter()
@@ -88,6 +173,8 @@ async def _run_chat(diff: str, *, repo_id: UUID | None = None) -> ReviewResult:
             retryable=exc.retryable,
         ) from exc
     verdict, findings = parse_review(provider.name, raw)
+    if temporal_pool:
+        _attach_temporal_context(findings, temporal_pool)
     elapsed_ms = int((time.perf_counter() - started) * 1000)
 
     context_files: list[str] | None = None

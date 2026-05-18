@@ -45,6 +45,24 @@ class Verdict(StrEnum):
     COMMENT = "comment"
 
 
+class TemporalEntry(BaseModel):
+    """One commit that touched a specific line window in a file (feature 008)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    commit_sha: str = Field(min_length=40, max_length=40)
+    short_sha: str = Field(min_length=7, max_length=7)
+    author_email: str = Field(min_length=1, max_length=254)
+    author_date: str = Field(min_length=1)
+    subject: str = Field(min_length=1)
+    hunk_lines_changed: int = Field(ge=0)
+
+    @field_validator("subject")
+    @classmethod
+    def _truncate_subject(cls, v: str) -> str:
+        return _truncate(v, 120)
+
+
 class Finding(BaseModel):
     model_config = ConfigDict(extra="ignore", str_strip_whitespace=False)
 
@@ -53,6 +71,7 @@ class Finding(BaseModel):
     severity: Severity
     message: str = Field(min_length=1)
     suggestion: str | None = None
+    temporal_context: list[TemporalEntry] | None = None
 
     @field_validator("severity", mode="before")
     @classmethod

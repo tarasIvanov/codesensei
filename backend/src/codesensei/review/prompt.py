@@ -71,21 +71,70 @@ def _render_context_block(chunks: Iterable[_ChunkLike]) -> str:
     return "\n".join(pieces) + "\n"
 
 
-def render_user_message(*, diff: str, retrieved_chunks: Iterable[_ChunkLike] | None = None) -> str:
-    """Compose the USER message. Empty/missing chunks → byte-equivalent to v2."""
-    block = _render_context_block(retrieved_chunks or [])
-    if not block:
-        return USER_TEMPLATE.format(DIFF=diff)
-    return block + USER_TEMPLATE.format(DIFF=diff)
+def _render_temporal_block(pool: object | None) -> str:
+    """Render the "Code history hints" block from a FileTemporalPool, or ''.
+
+    `pool` is typed loosely to avoid a circular import; we treat it as
+    ``dict[str, list[tuple[LineWindow, list[TemporalEntry]]]]`` at runtime.
+    """
+    if not pool:
+        return ""
+    non_empty: list[tuple[str, list[tuple[object, list[object]]]]] = []
+    for path, windows in pool.items():  # type: ignore[union-attr]
+        kept = [(w, entries) for w, entries in windows if entries]
+        if kept:
+            non_empty.append((path, kept))
+    if not non_empty:
+        return ""
+    lines = [
+        "Code history hints (these lines have changed recently — consider whether your fix is consistent with recent intent):",
+        "",
+    ]
+    for path, windows in non_empty:
+        for window, entries in windows:
+            start = getattr(window, "start_line", None)
+            end = getattr(window, "end_line", None)
+            lines.append(f"File: {path} (lines {start}-{end})")
+            lines.append("Recent commits touching these lines:")
+            for entry in entries:
+                short = getattr(entry, "short_sha", "")
+                date = getattr(entry, "author_date", "")[:10]
+                email = getattr(entry, "author_email", "")
+                subject = getattr(entry, "subject", "")
+                lines.append(f"  - {short} {date} {email}: {subject}")
+            lines.append("")
+    return "\n".join(lines) + "\n"
+
+
+def render_user_message(
+    *,
+    diff: str,
+    retrieved_chunks: Iterable[_ChunkLike] | None = None,
+    temporal_pool: object | None = None,
+) -> str:
+    """Compose the USER message. Empty/missing chunks AND pool → byte-equivalent to v2."""
+    temporal_block = _render_temporal_block(temporal_pool)
+    context_block = _render_context_block(retrieved_chunks or [])
+    body = USER_TEMPLATE.format(DIFF=diff)
+    if not temporal_block and not context_block:
+        return body
+    return temporal_block + context_block + body
 
 
 def build_messages(
-    diff: str, *, retrieved_chunks: Iterable[_ChunkLike] | None = None
+    diff: str,
+    *,
+    retrieved_chunks: Iterable[_ChunkLike] | None = None,
+    temporal_pool: object | None = None,
 ) -> list[ChatMessage]:
     return [
         {"role": "system", "content": SYSTEM_MESSAGE},
         {
             "role": "user",
-            "content": render_user_message(diff=diff, retrieved_chunks=retrieved_chunks),
+            "content": render_user_message(
+                diff=diff,
+                retrieved_chunks=retrieved_chunks,
+                temporal_pool=temporal_pool,
+            ),
         },
     ]
