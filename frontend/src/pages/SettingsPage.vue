@@ -1,21 +1,27 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
+import Badge from '../components/primitives/Badge.vue'
+import Button from '../components/primitives/Button.vue'
+import Card from '../components/primitives/Card.vue'
+import { useToast } from '../composables/useToast'
 import { ReviewApiError } from '../api/review'
 import {
   getSettings,
   saveSettings,
+  testGithub,
+  TestGithubError,
   type SettingsState,
   type SettingsUpdate,
 } from '../api/settings'
+
+const toast = useToast()
 
 const state = ref<SettingsState | null>(null)
 const isLoading = ref(true)
 const isSaving = ref(false)
 const errorMessage = ref('')
-const flash = ref('')
 
-// Form fields (local).
 const activeLlm = ref('openai')
 const activeEmbedding = ref('openai')
 const llmModel = ref('')
@@ -25,6 +31,14 @@ const openaiKey = ref('')
 const anthropicKey = ref('')
 const githubToken = ref('')
 
+type GithubTestState =
+  | { kind: 'idle' }
+  | { kind: 'in_flight' }
+  | { kind: 'ok'; login: string; scopes_hint: string | null; elapsedMs: number }
+  | { kind: 'error'; message: string }
+
+const githubTest = ref<GithubTestState>({ kind: 'idle' })
+
 function hydrate(s: SettingsState) {
   state.value = s
   activeLlm.value = s.active_llm_provider
@@ -32,7 +46,6 @@ function hydrate(s: SettingsState) {
   llmModel.value = s.llm_model
   embeddingModel.value = s.embedding_model
   ollamaBaseUrl.value = s.ollama_base_url
-  // Keep secret inputs blank — user must explicitly type to change.
   openaiKey.value = ''
   anthropicKey.value = ''
   githubToken.value = ''
@@ -50,10 +63,15 @@ onMounted(async () => {
   }
 })
 
+watch(githubToken, () => {
+  if (githubTest.value.kind !== 'idle' && githubTest.value.kind !== 'in_flight') {
+    githubTest.value = { kind: 'idle' }
+  }
+})
+
 async function save() {
   isSaving.value = true
   errorMessage.value = ''
-  flash.value = ''
   const body: SettingsUpdate = {
     active_llm_provider: activeLlm.value,
     active_embedding_provider: activeEmbedding.value,
@@ -66,13 +84,14 @@ async function save() {
   if (githubToken.value) body.github_token = githubToken.value
   try {
     hydrate(await saveSettings(body))
-    flash.value = 'Settings saved. Next call uses the new values.'
+    toast.push({ category: 'success', message: 'Settings saved. Next call uses the new values.' })
   } catch (err) {
     if (err instanceof ReviewApiError) {
       errorMessage.value = err.message
     } else {
       errorMessage.value = (err as Error).message || 'Save failed.'
     }
+    toast.push({ category: 'error', message: errorMessage.value })
   } finally {
     isSaving.value = false
   }
@@ -81,79 +100,160 @@ async function save() {
 async function clearSecret(field: 'openai_api_key' | 'anthropic_api_key' | 'github_token') {
   isSaving.value = true
   errorMessage.value = ''
-  flash.value = ''
   try {
     hydrate(await saveSettings({ [field]: '' } as SettingsUpdate))
-    flash.value = 'Credential cleared.'
+    toast.push({ category: 'success', message: 'Credential cleared.' })
   } catch (err) {
     errorMessage.value =
       err instanceof ReviewApiError
         ? err.message
         : (err as Error).message || 'Clear failed.'
+    toast.push({ category: 'error', message: errorMessage.value })
   } finally {
     isSaving.value = false
+  }
+}
+
+async function runGithubTest() {
+  if (githubTest.value.kind === 'in_flight') return
+  githubTest.value = { kind: 'in_flight' }
+  try {
+    const result = await testGithub()
+    githubTest.value = {
+      kind: 'ok',
+      login: result.login,
+      scopes_hint: result.scopes_hint,
+      elapsedMs: result.elapsed_ms,
+    }
+  } catch (err) {
+    const message =
+      err instanceof TestGithubError
+        ? err.message
+        : (err as Error).message || 'Probe failed.'
+    githubTest.value = { kind: 'error', message }
   }
 }
 </script>
 
 <template>
-  <section>
-    <h1>Settings</h1>
-    <p class="subtitle">
-      Active providers, model overrides, and credentials. Saved values
-      override the equivalent <code>.env</code> entries on the next provider
-      factory call.
-    </p>
-
-    <p v-if="isLoading">Loading…</p>
-
-    <div v-else-if="state">
-      <p v-if="!state.master_key_present" class="warn">
-        Settings storage is locked — set <code>MASTER_KEY</code> in
-        <code>.env</code> before saving credentials. You can still change
-        provider names and model overrides.
+  <Card title="Settings" subtitle="Active providers, model overrides, and credentials. Saved values override .env on the next provider factory call.">
+    <div v-if="isLoading" class="text-sm text-muted">Loading…</div>
+    <div v-else-if="state" class="flex flex-col gap-5">
+      <p
+        v-if="!state.master_key_present"
+        class="m-0 px-3 py-2 text-sm"
+        :style="{
+          backgroundColor: 'var(--color-warning-bg)',
+          color: 'var(--color-warning-fg)',
+          borderRadius: 'var(--radius-sm)',
+        }"
+      >
+        Settings storage is locked — set <code>MASTER_KEY</code> in <code>.env</code> before
+        saving credentials. You can still change provider names and model overrides.
       </p>
 
-      <fieldset>
-        <legend>Active providers</legend>
-        <label>
-          LLM provider
-          <select v-model="activeLlm">
+      <fieldset
+        class="m-0 p-0 border-0 flex flex-col gap-3"
+      >
+        <legend class="text-xs font-semibold uppercase tracking-wide text-muted">
+          Active providers
+        </legend>
+        <label class="flex flex-col gap-1 text-sm">
+          <span :style="{ color: 'var(--color-text)' }">LLM provider</span>
+          <select
+            v-model="activeLlm"
+            class="focus-ring px-2 py-1.5 text-sm font-mono"
+            :style="{
+              backgroundColor: 'var(--color-bg-elevated)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 'var(--radius-sm)',
+              color: 'var(--color-text)',
+            }"
+          >
             <option value="openai">openai</option>
             <option value="anthropic">anthropic</option>
             <option value="ollama">ollama</option>
           </select>
         </label>
-        <label>
-          Embedding provider
-          <select v-model="activeEmbedding">
+        <label class="flex flex-col gap-1 text-sm">
+          <span :style="{ color: 'var(--color-text)' }">Embedding provider</span>
+          <select
+            v-model="activeEmbedding"
+            class="focus-ring px-2 py-1.5 text-sm font-mono"
+            :style="{
+              backgroundColor: 'var(--color-bg-elevated)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 'var(--radius-sm)',
+              color: 'var(--color-text)',
+            }"
+          >
             <option value="openai">openai</option>
             <option value="ollama">ollama</option>
           </select>
         </label>
       </fieldset>
 
-      <fieldset>
-        <legend>Model overrides</legend>
-        <label>
-          LLM model
-          <input v-model="llmModel" type="text" spellcheck="false" placeholder="(default)" />
+      <fieldset class="m-0 p-0 border-0 flex flex-col gap-3">
+        <legend class="text-xs font-semibold uppercase tracking-wide text-muted">
+          Model overrides
+        </legend>
+        <label class="flex flex-col gap-1 text-sm">
+          <span :style="{ color: 'var(--color-text)' }">LLM model</span>
+          <input
+            v-model="llmModel"
+            type="text"
+            spellcheck="false"
+            placeholder="(default)"
+            class="focus-ring px-2 py-1.5 text-sm font-mono"
+            :style="{
+              backgroundColor: 'var(--color-bg-elevated)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 'var(--radius-sm)',
+              color: 'var(--color-text)',
+            }"
+          />
         </label>
-        <label>
-          Embedding model
-          <input v-model="embeddingModel" type="text" spellcheck="false" placeholder="(default)" />
+        <label class="flex flex-col gap-1 text-sm">
+          <span :style="{ color: 'var(--color-text)' }">Embedding model</span>
+          <input
+            v-model="embeddingModel"
+            type="text"
+            spellcheck="false"
+            placeholder="(default)"
+            class="focus-ring px-2 py-1.5 text-sm font-mono"
+            :style="{
+              backgroundColor: 'var(--color-bg-elevated)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 'var(--radius-sm)',
+              color: 'var(--color-text)',
+            }"
+          />
         </label>
-        <label>
-          Ollama base URL
-          <input v-model="ollamaBaseUrl" type="text" spellcheck="false" placeholder="http://ollama:11434" />
+        <label class="flex flex-col gap-1 text-sm">
+          <span :style="{ color: 'var(--color-text)' }">Ollama base URL</span>
+          <input
+            v-model="ollamaBaseUrl"
+            type="text"
+            spellcheck="false"
+            placeholder="http://ollama:11434"
+            class="focus-ring px-2 py-1.5 text-sm font-mono"
+            :style="{
+              backgroundColor: 'var(--color-bg-elevated)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 'var(--radius-sm)',
+              color: 'var(--color-text)',
+            }"
+          />
         </label>
       </fieldset>
 
-      <fieldset>
-        <legend>Credentials</legend>
-        <label>
-          OpenAI API key
-          <div class="cred-row">
+      <fieldset class="m-0 p-0 border-0 flex flex-col gap-3">
+        <legend class="text-xs font-semibold uppercase tracking-wide text-muted">
+          Credentials
+        </legend>
+        <label class="flex flex-col gap-1 text-sm">
+          <span :style="{ color: 'var(--color-text)' }">OpenAI API key</span>
+          <div class="flex gap-2">
             <input
               v-model="openaiKey"
               type="password"
@@ -162,17 +262,30 @@ async function clearSecret(field: 'openai_api_key' | 'anthropic_api_key' | 'gith
                 ? state.credentials.openai_api_key.fingerprint || '…stored…'
                 : 'not configured'"
               spellcheck="false"
+              class="focus-ring flex-1 px-2 py-1.5 text-sm font-mono"
+              :style="{
+                backgroundColor: 'var(--color-bg-elevated)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-sm)',
+                color: 'var(--color-text)',
+              }"
             />
-            <button
+            <Button
               v-if="state.credentials.openai_api_key.set"
-              type="button" class="clear" :disabled="isSaving"
+              variant="secondary"
+              size="sm"
+              :disabled="isSaving"
               @click="clearSecret('openai_api_key')"
-            >Clear</button>
+            >Clear</Button>
           </div>
+          <p class="text-xs text-muted m-0">
+            OpenAI connectivity is shown on the
+            <RouterLink to="/" class="underline">Status</RouterLink> page.
+          </p>
         </label>
-        <label>
-          Anthropic API key
-          <div class="cred-row">
+        <label class="flex flex-col gap-1 text-sm">
+          <span :style="{ color: 'var(--color-text)' }">Anthropic API key</span>
+          <div class="flex gap-2">
             <input
               v-model="anthropicKey"
               type="password"
@@ -181,17 +294,26 @@ async function clearSecret(field: 'openai_api_key' | 'anthropic_api_key' | 'gith
                 ? state.credentials.anthropic_api_key.fingerprint || '…stored…'
                 : 'not configured'"
               spellcheck="false"
+              class="focus-ring flex-1 px-2 py-1.5 text-sm font-mono"
+              :style="{
+                backgroundColor: 'var(--color-bg-elevated)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-sm)',
+                color: 'var(--color-text)',
+              }"
             />
-            <button
+            <Button
               v-if="state.credentials.anthropic_api_key.set"
-              type="button" class="clear" :disabled="isSaving"
+              variant="secondary"
+              size="sm"
+              :disabled="isSaving"
               @click="clearSecret('anthropic_api_key')"
-            >Clear</button>
+            >Clear</Button>
           </div>
         </label>
-        <label>
-          GitHub token
-          <div class="cred-row">
+        <label class="flex flex-col gap-1 text-sm">
+          <span :style="{ color: 'var(--color-text)' }">GitHub token</span>
+          <div class="flex gap-2">
             <input
               v-model="githubToken"
               type="password"
@@ -200,127 +322,61 @@ async function clearSecret(field: 'openai_api_key' | 'anthropic_api_key' | 'gith
                 ? state.credentials.github_token.fingerprint || '…stored…'
                 : 'not configured'"
               spellcheck="false"
+              class="focus-ring flex-1 px-2 py-1.5 text-sm font-mono"
+              :style="{
+                backgroundColor: 'var(--color-bg-elevated)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-sm)',
+                color: 'var(--color-text)',
+              }"
             />
-            <button
+            <Button
+              variant="secondary"
+              size="sm"
+              :loading="githubTest.kind === 'in_flight'"
+              :disabled="!state.credentials.github_token.set && !githubToken"
+              @click="runGithubTest"
+            >Test connection</Button>
+            <Button
               v-if="state.credentials.github_token.set"
-              type="button" class="clear" :disabled="isSaving"
+              variant="secondary"
+              size="sm"
+              :disabled="isSaving"
               @click="clearSecret('github_token')"
-            >Clear</button>
+            >Clear</Button>
+          </div>
+          <div v-if="githubTest.kind === 'ok'" class="flex items-center gap-2 mt-1">
+            <Badge tone="success">OK</Badge>
+            <span class="text-xs text-muted font-mono">
+              {{ githubTest.login }}
+              <span v-if="githubTest.scopes_hint"> · {{ githubTest.scopes_hint }}</span>
+              · {{ githubTest.elapsedMs }} ms
+            </span>
+          </div>
+          <div v-else-if="githubTest.kind === 'error'" class="flex items-center gap-2 mt-1">
+            <Badge tone="danger">FAILED</Badge>
+            <span class="text-xs font-mono" :style="{ color: 'var(--color-danger-fg)' }">
+              {{ githubTest.message }}
+            </span>
           </div>
         </label>
       </fieldset>
 
-      <div class="actions">
-        <button class="submit" :disabled="isSaving" @click="save">
-          {{ isSaving ? 'Saving…' : 'Save' }}
-        </button>
-        <span v-if="flash" class="flash">{{ flash }}</span>
+      <div class="flex items-center gap-3">
+        <Button :loading="isSaving" @click="save">Save</Button>
       </div>
 
-      <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
+      <p
+        v-if="errorMessage"
+        class="m-0 px-3 py-2 text-sm"
+        :style="{
+          backgroundColor: 'var(--color-danger-bg)',
+          color: 'var(--color-danger-fg)',
+          borderRadius: 'var(--radius-sm)',
+        }"
+      >
+        {{ errorMessage }}
+      </p>
     </div>
-  </section>
+  </Card>
 </template>
-
-<style scoped>
-section {
-  font-family: system-ui, -apple-system, Segoe UI, sans-serif;
-  color: #0f172a;
-}
-h1 {
-  margin: 0 0 0.25rem;
-  font-size: 1.5rem;
-}
-.subtitle {
-  color: #64748b;
-  margin: 0 0 1rem;
-}
-fieldset {
-  border: 1px solid #e5e7eb;
-  border-radius: 0.5rem;
-  padding: 0.75rem 1rem;
-  margin: 0 0 1rem;
-}
-legend {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #334155;
-  padding: 0 0.4rem;
-}
-label {
-  display: block;
-  margin: 0.5rem 0;
-  font-size: 0.9rem;
-}
-input, select {
-  display: block;
-  width: 100%;
-  padding: 0.45rem 0.55rem;
-  border: 1px solid #d1d5db;
-  border-radius: 0.4rem;
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 0.9rem;
-  background: #f9fafb;
-  box-sizing: border-box;
-}
-input:disabled {
-  background: #f3f4f6;
-  color: #9ca3af;
-}
-.cred-row {
-  display: flex;
-  gap: 0.5rem;
-}
-.cred-row input {
-  flex: 1;
-}
-.clear {
-  background: #6b7280;
-  color: #fff;
-  border: 0;
-  border-radius: 0.3rem;
-  padding: 0 0.7rem;
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-.actions {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-.submit {
-  background: #2563eb;
-  color: #fff;
-  border: 0;
-  border-radius: 0.4rem;
-  padding: 0.5rem 1.1rem;
-  font-size: 0.95rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.submit:disabled {
-  background: #94a3b8;
-  cursor: not-allowed;
-}
-.flash {
-  color: #166534;
-  font-size: 0.85rem;
-}
-.warn {
-  padding: 0.6rem 0.85rem;
-  background: #fef9c3;
-  border: 1px solid #fde68a;
-  border-radius: 0.4rem;
-  color: #713f12;
-  font-size: 0.85rem;
-}
-.error {
-  margin-top: 0.9rem;
-  padding: 0.6rem 0.85rem;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: 0.4rem;
-  color: #991b1b;
-  font-size: 0.9rem;
-}
-</style>

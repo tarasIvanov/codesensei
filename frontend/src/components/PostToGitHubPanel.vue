@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
 
+import Button from './primitives/Button.vue'
+import Card from './primitives/Card.vue'
+import { useToast } from '../composables/useToast'
 import {
   postReview,
   PostReviewError,
@@ -11,10 +14,18 @@ import type { ReviewResult, Verdict } from '../api/review'
 
 const props = defineProps<{ reviewResult: ReviewResult; prUrl: string }>()
 
+const toast = useToast()
+
 const VERDICT_TO_EVENT: Record<Verdict, GitHubEvent> = {
   approve: 'APPROVE',
   request_changes: 'REQUEST_CHANGES',
   comment: 'COMMENT',
+}
+
+const EVENT_LABEL: Record<GitHubEvent, string> = {
+  COMMENT: 'Comment',
+  REQUEST_CHANGES: 'Request changes',
+  APPROVE: 'Approve',
 }
 
 const event = ref<GitHubEvent>(VERDICT_TO_EVENT[props.reviewResult.verdict])
@@ -35,12 +46,8 @@ function startCountdown(seconds: number) {
   stopCountdown()
   retryCountdown.value = seconds
   countdownTimer = setInterval(() => {
-    if (retryCountdown.value > 0) {
-      retryCountdown.value -= 1
-    }
-    if (retryCountdown.value <= 0) {
-      stopCountdown()
-    }
+    if (retryCountdown.value > 0) retryCountdown.value -= 1
+    if (retryCountdown.value <= 0) stopCountdown()
   }, 1000)
 }
 
@@ -74,18 +81,35 @@ async function submit() {
       pr_url: props.prUrl,
       event: event.value,
     })
+    const receipt = posted.value
+    toast.push({
+      category: 'success',
+      message: `Review posted to GitHub (${receipt.comment_count} inline comments).`,
+      action: {
+        label: 'Open on GitHub',
+        onClick: () => window.open(receipt.html_url, '_blank', 'noopener'),
+      },
+    })
   } catch (err) {
     if (err instanceof PostReviewError) {
       error.value = err
       if (err.category === 'github_rate_limited' && err.retryAfterSeconds) {
         startCountdown(err.retryAfterSeconds)
       }
+      toast.push({
+        category: err.category === 'github_rate_limited' ? 'info' : 'error',
+        message: err.message,
+        action: err.retryable
+          ? { label: 'Retry', onClick: () => void submit() }
+          : undefined,
+      })
     } else {
       error.value = new PostReviewError(
         'internal',
         (err as Error).message || 'Unexpected error',
         false,
       )
+      toast.push({ category: 'error', message: error.value.message })
     }
   } finally {
     inFlight.value = false
@@ -94,153 +118,83 @@ async function submit() {
 </script>
 
 <template>
-  <section class="panel" aria-label="Post review to GitHub">
-    <h2 class="title">Post to GitHub</h2>
-
+  <Card title="Post to GitHub" subtitle="Publish this review back to the PR as a native GitHub review.">
     <template v-if="!posted">
-      <fieldset class="events" :disabled="inFlight">
-        <legend class="legend">Review action</legend>
-        <label
-          v-for="opt in (['COMMENT','REQUEST_CHANGES','APPROVE'] as GitHubEvent[])"
-          :key="opt"
-          class="event-option"
+      <div class="flex flex-col gap-3">
+        <fieldset
+          class="m-0 p-0 border-0 flex flex-wrap gap-3"
+          :disabled="inFlight"
         >
-          <input type="radio" :value="opt" v-model="event" />
-          <span>{{ opt === 'COMMENT' ? 'Comment' : opt === 'REQUEST_CHANGES' ? 'Request changes' : 'Approve' }}</span>
-        </label>
-      </fieldset>
-
-      <button
-        class="submit"
-        :disabled="inFlight"
-        :aria-busy="inFlight ? 'true' : 'false'"
-        @click="submit"
-      >
-        {{ inFlight ? 'Posting…' : 'Post to GitHub' }}
-      </button>
+          <legend class="sr-only">Review action</legend>
+          <label
+            v-for="opt in (['COMMENT', 'REQUEST_CHANGES', 'APPROVE'] as GitHubEvent[])"
+            :key="opt"
+            class="flex items-center gap-2 text-sm cursor-pointer"
+          >
+            <input
+              type="radio"
+              :value="opt"
+              v-model="event"
+              class="focus-ring"
+            />
+            <span :style="{ color: 'var(--color-text)' }">{{ EVENT_LABEL[opt] }}</span>
+          </label>
+        </fieldset>
+        <div>
+          <Button :loading="inFlight" @click="submit">Post to GitHub</Button>
+        </div>
+      </div>
     </template>
 
-    <div v-if="posted" class="posted">
-      <p class="success">
+    <div v-if="posted" class="flex flex-col gap-1">
+      <p
+        class="m-0 font-semibold"
+        :style="{ color: 'var(--color-success-fg)' }"
+      >
         Posted ✓ —
-        <a :href="posted.html_url" target="_blank" rel="noopener">View on GitHub</a>
+        <a
+          :href="posted.html_url"
+          target="_blank"
+          rel="noopener"
+          class="underline"
+        >View on GitHub</a>
       </p>
-      <p class="meta">Inline comments attached: {{ posted.comment_count }}</p>
+      <p class="m-0 text-xs text-muted">
+        Inline comments attached: {{ posted.comment_count }}
+      </p>
     </div>
 
-    <div v-if="error" class="banner" role="alert">
-      <p class="banner-msg">{{ error.message }}</p>
-      <p v-if="error.category === 'github_rate_limited'" class="banner-msg" aria-live="polite">
+    <div
+      v-if="error && !posted"
+      class="mt-3 px-3 py-2 text-sm"
+      :style="{
+        backgroundColor: 'var(--color-danger-bg)',
+        color: 'var(--color-danger-fg)',
+        borderRadius: 'var(--radius-sm)',
+      }"
+      role="alert"
+    >
+      <p class="m-0">{{ error.message }}</p>
+      <p
+        v-if="error.category === 'github_rate_limited'"
+        class="m-0 mt-1"
+        aria-live="polite"
+      >
         Retry available in {{ retryCountdown }}s.
       </p>
-      <p v-if="error.category === 'settings_locked'" class="banner-msg">
-        <RouterLink to="/settings" class="settings-link">Go to Settings →</RouterLink>
+      <p v-if="error.category === 'settings_locked'" class="m-0 mt-1">
+        <RouterLink to="/settings" class="underline font-semibold">
+          Go to Settings →
+        </RouterLink>
       </p>
-      <button
-        v-if="error.retryable"
-        class="retry"
-        :disabled="retryDisabled"
-        @click="submit"
-      >
-        Retry
-      </button>
+      <div v-if="error.retryable" class="mt-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          :disabled="retryDisabled"
+          @click="submit"
+        >Retry</Button>
+      </div>
     </div>
-  </section>
+  </Card>
 </template>
-
-<style scoped>
-.panel {
-  margin-top: 1rem;
-  padding: 0.85rem 1rem;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 0.5rem;
-  font-family: system-ui, -apple-system, Segoe UI, sans-serif;
-}
-.title {
-  margin: 0 0 0.5rem;
-  font-size: 1rem;
-  color: #0f172a;
-}
-.events {
-  border: 0;
-  padding: 0;
-  margin: 0 0 0.5rem;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-.legend {
-  font-size: 0.75rem;
-  color: #475569;
-  margin-bottom: 0.35rem;
-}
-.event-option {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  font-size: 0.85rem;
-  color: #0f172a;
-}
-.submit {
-  background: #16a34a;
-  color: #fff;
-  border: 0;
-  border-radius: 0.4rem;
-  padding: 0.4rem 0.95rem;
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.submit:disabled {
-  background: #94a3b8;
-  cursor: not-allowed;
-}
-.posted {
-  margin-top: 0.25rem;
-}
-.success {
-  color: #15803d;
-  font-weight: 600;
-  margin: 0;
-}
-.success a {
-  color: #15803d;
-}
-.meta {
-  color: #475569;
-  font-size: 0.8rem;
-  margin: 0.25rem 0 0;
-}
-.banner {
-  margin-top: 0.6rem;
-  padding: 0.55rem 0.75rem;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: 0.4rem;
-  color: #991b1b;
-  font-size: 0.85rem;
-}
-.banner-msg {
-  margin: 0 0 0.25rem;
-}
-.settings-link {
-  color: #991b1b;
-  font-weight: 600;
-  text-decoration: underline;
-}
-.retry {
-  margin-top: 0.25rem;
-  background: #991b1b;
-  color: #fff;
-  border: 0;
-  border-radius: 0.3rem;
-  padding: 0.2rem 0.7rem;
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-.retry:disabled {
-  background: #94a3b8;
-  cursor: not-allowed;
-}
-</style>

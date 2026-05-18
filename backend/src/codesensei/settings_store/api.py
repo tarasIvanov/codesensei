@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import time
+from typing import Literal
+
 import structlog
 from fastapi import APIRouter, Request
+from pydantic import BaseModel, ConfigDict
 
 from codesensei.config import get_settings
 from codesensei.providers.factory import EMBEDDING_ACCEPTED, LLM_ACCEPTED
 from codesensei.review.errors import ReviewError, ReviewErrorCategory
 from codesensei.settings_store import store
 from codesensei.settings_store.crypto import is_master_key_valid
+from codesensei.settings_store.github_probe import probe_github
 from codesensei.settings_store.runtime import apply_store_overrides_to_env
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -129,3 +134,55 @@ async def post_settings(request: Request) -> dict[str, object]:
     await apply_store_overrides_to_env()
     _logger.info("settings.updated", keys_set=keys_set, keys_cleared=keys_cleared)
     return await _build_state()
+
+
+class SettingsTestGithubResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    ok: Literal[True]
+    login: str
+    scopes_hint: str | None = None
+    elapsed_ms: int
+
+
+@router.get("/test/github", response_model=SettingsTestGithubResponse)
+async def test_github_endpoint() -> SettingsTestGithubResponse:
+    """Read-only probe of the stored GitHub PAT — never echoes the PAT."""
+    started = time.monotonic()
+    login: str | None = None
+    category: str | None = None
+    status_code: int | None = None
+    ok_flag = False
+    try:
+        token = await store.get_setting("GITHUB_TOKEN")
+        if token is None or token == "":
+            raise ReviewError(
+                ReviewErrorCategory.SETTINGS_LOCKED,
+                "GitHub PAT is not configured. Open Settings to add one.",
+            )
+        result = await probe_github(token)
+        login = result["login"]
+        scopes_hint = result["scopes_hint"]
+        ok_flag = True
+        status_code = 200
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        return SettingsTestGithubResponse(
+            ok=True,
+            login=login or "",
+            scopes_hint=scopes_hint,
+            elapsed_ms=elapsed_ms,
+        )
+    except ReviewError as exc:
+        category = exc.category.value
+        status_code = exc.http_status
+        raise
+    finally:
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        _logger.info(
+            "github_probe",
+            ok=ok_flag,
+            login=login,
+            status_code=status_code,
+            elapsed_ms=elapsed_ms,
+            category=category,
+        )

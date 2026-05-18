@@ -1,11 +1,18 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 
-import FindingsList, { type Finding } from '../components/FindingsList.vue'
+import Button from '../components/primitives/Button.vue'
+import Card from '../components/primitives/Card.vue'
+import Skeleton from '../components/primitives/Skeleton.vue'
 import ContextFilesPanel from '../components/ContextFilesPanel.vue'
+import FindingsList from '../components/findings/FindingsList.vue'
+import type { Finding } from '../components/findings/FindingRow.vue'
 import PostToGitHubPanel from '../components/PostToGitHubPanel.vue'
+import { useToast } from '../composables/useToast'
 import { ReviewApiError, runReview, type ReviewResult } from '../api/review'
 import { listRepos, type RepoEntry } from '../api/repos'
+
+const toast = useToast()
 
 const prUrl = ref('')
 const isLoading = ref(false)
@@ -55,166 +62,142 @@ async function submit(): Promise<void> {
     } else {
       errorMessage.value = (err as Error).message || 'Unknown error.'
     }
+    toast.push({ category: 'error', message: errorMessage.value })
   } finally {
     isLoading.value = false
   }
 }
 
-const findings = computed<Finding[]>(() => result.value?.findings ?? [])
+const findings = computed<Finding[]>(
+  () => (result.value?.findings ?? []) as Finding[],
+)
+
+const hasNoFindings = computed(
+  () => result.value !== null && findings.value.length === 0,
+)
+
+const verdictTone = computed(() => {
+  if (!result.value) return null
+  switch (result.value.verdict) {
+    case 'approve':
+      return { label: 'Approved', icon: '✓', color: 'var(--color-success-fg)' }
+    case 'request_changes':
+      return { label: 'Request changes', icon: '!', color: 'var(--color-danger-fg)' }
+    case 'comment':
+    default:
+      return { label: 'Comment', icon: '○', color: 'var(--color-info-fg)' }
+  }
+})
 </script>
 
 <template>
-  <section>
-    <h1>Review a pull request</h1>
-    <p class="subtitle">
-      Paste a GitHub PR URL. The configured LLM provider returns structured findings.
-      Optionally pick an indexed repository — its top-K semantically nearest chunks will be added as context.
-    </p>
+  <Card title="Review a pull request" subtitle="Paste a GitHub PR URL. The configured LLM provider returns structured findings. Optionally pick an indexed repository — its top-K semantically nearest chunks will be added as context.">
+    <div class="flex flex-col gap-3">
+      <div v-if="readyRepos.length > 0" class="flex items-center gap-2">
+        <label
+          for="repo-select"
+          class="text-sm text-muted whitespace-nowrap"
+        >Use context from repository:</label>
+        <select
+          id="repo-select"
+          v-model="selectedRepoId"
+          class="focus-ring flex-1 px-2 py-1.5 text-sm font-mono"
+          :style="{
+            backgroundColor: 'var(--color-bg-elevated)',
+            border: '1px solid var(--color-border)',
+            borderRadius: 'var(--radius-sm)',
+            color: 'var(--color-text)',
+          }"
+        >
+          <option value="">(none)</option>
+          <option v-for="r in readyRepos" :key="r.repo_id" :value="r.repo_id">
+            {{ r.source }} · {{ r.chunk_count }} chunks
+          </option>
+        </select>
+      </div>
+      <p v-else-if="reposLoaded" class="text-sm text-muted m-0">
+        Tip: index a repository on the
+        <RouterLink to="/repos" class="underline">Repositories</RouterLink>
+        page to enable RAG context for reviews.
+      </p>
 
-    <div v-if="readyRepos.length > 0" class="context-row">
-      <label for="repo-select" class="ctx-label">Use context from repository:</label>
-      <select id="repo-select" v-model="selectedRepoId" class="repo-select">
-        <option value="">(none)</option>
-        <option v-for="r in readyRepos" :key="r.repo_id" :value="r.repo_id">
-          {{ r.source }}  ·  {{ r.chunk_count }} chunks
-        </option>
-      </select>
+      <input
+        v-model="prUrl"
+        class="focus-ring w-full px-3 py-2 text-sm font-mono"
+        type="text"
+        spellcheck="false"
+        placeholder="https://github.com/owner/repo/pull/123"
+        :style="{
+          backgroundColor: 'var(--color-bg-elevated)',
+          border: '1px solid var(--color-border)',
+          borderRadius: 'var(--radius-sm)',
+          color: 'var(--color-text)',
+        }"
+        @keydown.enter="submit"
+      />
+
+      <div class="flex items-center gap-3">
+        <Button :loading="isLoading" :disabled="!canSubmit" @click="submit">
+          {{ isLoading ? 'Reviewing…' : 'Review' }}
+        </Button>
+        <span v-if="result" class="text-xs text-muted font-mono">
+          provider <strong :style="{ color: 'var(--color-text)' }">{{ result.provider }}</strong>
+          · {{ result.elapsed_ms }} ms
+        </span>
+      </div>
+
+      <div v-if="errorMessage && !isLoading" class="flex items-center gap-3 mt-1">
+        <span
+          class="text-sm"
+          :style="{ color: 'var(--color-danger-fg)' }"
+        >{{ errorMessage }}</span>
+        <Button v-if="errorRetryable" variant="secondary" size="sm" @click="submit">
+          Try again
+        </Button>
+      </div>
     </div>
-    <p v-else-if="reposLoaded" class="hint">
-      Tip: index a repository on the <RouterLink to="/repos">Repositories</RouterLink> page to enable RAG context for reviews.
-    </p>
+  </Card>
 
-    <input
-      v-model="prUrl"
-      class="url-input"
-      type="text"
-      spellcheck="false"
-      placeholder="https://github.com/owner/repo/pull/123"
-      @keydown.enter="submit"
-    />
-
-    <div class="actions">
-      <button class="submit" :disabled="!canSubmit" @click="submit">
-        {{ isLoading ? 'Reviewing…' : 'Review' }}
-      </button>
-      <span v-if="result" class="meta">
-        provider <strong>{{ result.provider }}</strong> · {{ result.elapsed_ms }} ms
-      </span>
+  <Card v-if="isLoading" title="Findings" subtitle="Generating review…">
+    <div class="flex flex-col gap-4" aria-label="Loading findings">
+      <div>
+        <Skeleton :lines="1" class="mb-2" />
+        <Skeleton :lines="3" />
+      </div>
+      <div>
+        <Skeleton :lines="1" class="mb-2" />
+        <Skeleton :lines="2" />
+      </div>
     </div>
+  </Card>
 
-    <p v-if="errorMessage" class="error">
-      {{ errorMessage }}
-      <button v-if="errorRetryable" class="retry" @click="submit">Try again</button>
-    </p>
+  <ContextFilesPanel
+    v-if="result && result.context_files !== undefined && result.context_files !== null"
+    :files="result.context_files"
+  />
 
-    <ContextFilesPanel
-      v-if="result && result.context_files !== undefined && result.context_files !== null"
-      :files="result.context_files"
-    />
+  <Card v-if="hasNoFindings && verdictTone" flush>
+    <div class="flex flex-col items-center text-center px-6 py-10">
+      <span
+        class="text-3xl mb-2"
+        aria-hidden="true"
+        :style="{ color: verdictTone.color }"
+      >{{ verdictTone.icon }}</span>
+      <p
+        class="m-0 text-base font-semibold"
+        :style="{ color: 'var(--color-text)' }"
+      >No findings</p>
+      <p class="m-0 mt-1 text-sm text-muted">
+        Verdict: <strong :style="{ color: verdictTone.color }">{{ verdictTone.label }}</strong>
+      </p>
+    </div>
+  </Card>
 
-    <FindingsList
-      v-if="result"
-      :findings="findings"
-      :verdict="result.verdict"
-    />
+  <FindingsList v-if="result && findings.length > 0" :findings="findings" />
 
-    <PostToGitHubPanel
-      v-if="result && prUrl.trim()"
-      :review-result="result"
-      :pr-url="prUrl.trim()"
-    />
-  </section>
+  <PostToGitHubPanel
+    v-if="result && prUrl.trim()"
+    :review-result="result"
+    :pr-url="prUrl.trim()"
+  />
 </template>
-
-<style scoped>
-section {
-  font-family: system-ui, -apple-system, Segoe UI, sans-serif;
-  color: #0f172a;
-}
-h1 {
-  margin: 0 0 0.25rem;
-  font-size: 1.5rem;
-}
-.subtitle {
-  color: #64748b;
-  margin: 0 0 1rem;
-}
-.context-row {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  margin-bottom: 0.6rem;
-}
-.ctx-label {
-  font-size: 0.85rem;
-  color: #475569;
-}
-.repo-select {
-  flex: 1;
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 0.85rem;
-  padding: 0.35rem 0.5rem;
-  border-radius: 0.4rem;
-  border: 1px solid #cbd5e1;
-  background: #f9fafb;
-}
-.hint {
-  color: #64748b;
-  font-size: 0.85rem;
-  margin: 0 0 0.6rem;
-}
-.url-input {
-  width: 100%;
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 0.9rem;
-  padding: 0.65rem 0.75rem;
-  border: 1px solid #d1d5db;
-  border-radius: 0.5rem;
-  box-sizing: border-box;
-  background: #f9fafb;
-}
-.actions {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-top: 0.75rem;
-}
-.submit {
-  background: #2563eb;
-  color: #fff;
-  border: 0;
-  border-radius: 0.4rem;
-  padding: 0.5rem 1.1rem;
-  font-size: 0.95rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.submit:disabled {
-  background: #94a3b8;
-  cursor: not-allowed;
-}
-.meta {
-  color: #64748b;
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 0.78rem;
-}
-.error {
-  margin-top: 0.9rem;
-  padding: 0.6rem 0.85rem;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: 0.4rem;
-  color: #991b1b;
-  font-size: 0.9rem;
-}
-.retry {
-  margin-left: 0.6rem;
-  background: #991b1b;
-  color: #fff;
-  border: 0;
-  border-radius: 0.3rem;
-  padding: 0.2rem 0.6rem;
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-</style>

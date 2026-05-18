@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
+import Card from '../components/primitives/Card.vue'
 import RepoForm from '../components/RepoForm.vue'
 import RepoList from '../components/RepoList.vue'
+import { useToast } from '../composables/useToast'
 import {
   createIndex,
   deleteRepo,
@@ -13,16 +15,18 @@ import {
   type RepoEntry,
 } from '../api/repos'
 
-const repos = ref<RepoEntry[]>([])
-const errorMessage = ref('')
+const toast = useToast()
 
+const repos = ref<RepoEntry[]>([])
 const pollerHandle = ref<ReturnType<typeof setInterval> | null>(null)
 
 async function refresh(): Promise<void> {
   try {
     repos.value = await listRepos()
   } catch (err) {
-    errorMessage.value = err instanceof RepoApiError ? err.message : (err as Error).message
+    const message =
+      err instanceof RepoApiError ? err.message : (err as Error).message
+    toast.push({ category: 'error', message })
   }
 }
 
@@ -52,9 +56,7 @@ onBeforeUnmount(stopPolling)
 
 function handleSubmitted(result: CreateIndexResult): void {
   void refresh()
-  if (result.mode === 'async') {
-    startPolling()
-  }
+  if (result.mode === 'async') startPolling()
 }
 
 async function handleDelete(repoId: string): Promise<void> {
@@ -62,8 +64,11 @@ async function handleDelete(repoId: string): Promise<void> {
   try {
     await deleteRepo(repoId)
     await refresh()
+    toast.push({ category: 'success', message: 'Repository deleted.' })
   } catch (err) {
-    errorMessage.value = err instanceof RepoApiError ? err.message : (err as Error).message
+    const message =
+      err instanceof RepoApiError ? err.message : (err as Error).message
+    toast.push({ category: 'error', message })
   }
 }
 
@@ -74,59 +79,31 @@ async function handleReindex(repo: RepoEntry): Promise<void> {
       default_branch: repo.default_branch,
     })
     await refresh()
-    if (result.mode === 'async') {
-      startPolling()
-    }
+    if (result.mode === 'async') startPolling()
+    toast.push({
+      category: 'success',
+      message: result.mode === 'sync' ? 'Re-indexed.' : 'Re-indexing in background.',
+    })
   } catch (err) {
-    errorMessage.value = err instanceof RepoApiError ? err.message : (err as Error).message
+    const message =
+      err instanceof RepoApiError ? err.message : (err as Error).message
+    toast.push({ category: 'error', message })
   }
 }
 
-// Reference pollJob so unused-import lints don't flag — it's part of the public surface
-// of `../api/repos` even though this page polls via `listRepos` for now.
+// Reference pollJob so unused-import lints don't flag — it's part of the public surface.
 void pollJob
 </script>
 
 <template>
-  <section>
-    <h1>Repositories</h1>
-    <p class="subtitle">
-      Index a public HTTPS repository or a locally-mounted directory so the
-      <RouterLink to="/review">Review</RouterLink> page can pull retrieved context from it.
-    </p>
-
-    <RepoForm @submitted="handleSubmitted" />
-
-    <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
-
-    <RepoList
-      :repos="repos"
-      @delete="handleDelete"
-      @reindex="handleReindex"
-    />
-  </section>
+  <Card title="Repositories" subtitle="Index a public HTTPS repository or a locally-mounted directory so /review can pull retrieved context from it.">
+    <div class="flex flex-col gap-5">
+      <RepoForm @submitted="handleSubmitted" />
+      <RepoList
+        :repos="repos"
+        @delete="handleDelete"
+        @reindex="handleReindex"
+      />
+    </div>
+  </Card>
 </template>
-
-<style scoped>
-section {
-  font-family: system-ui, -apple-system, Segoe UI, sans-serif;
-  color: #0f172a;
-}
-h1 {
-  margin: 0 0 0.25rem;
-  font-size: 1.5rem;
-}
-.subtitle {
-  color: #64748b;
-  margin: 0 0 1rem;
-}
-.error {
-  margin: 0.6rem 0;
-  padding: 0.5rem 0.7rem;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: 0.4rem;
-  color: #991b1b;
-  font-size: 0.88rem;
-}
-</style>
