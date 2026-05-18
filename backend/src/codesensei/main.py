@@ -1,4 +1,5 @@
 """FastAPI app factory."""
+
 from contextlib import asynccontextmanager
 from urllib.parse import urlparse
 
@@ -12,6 +13,7 @@ from codesensei.healthcheck import router as healthcheck_router
 from codesensei.indexing.api import router as indexing_router
 from codesensei.indexing.errors import IndexError as _IdxError
 from codesensei.logging_config import configure_logging
+from codesensei.posting.api import router as posting_router
 from codesensei.review.errors import ReviewError, ReviewErrorCategory
 from codesensei.review.router import router as review_router
 from codesensei.settings_store.api import router as settings_router
@@ -47,9 +49,7 @@ async def _lifespan(_app: FastAPI):
     try:
         await apply_store_overrides_to_env()
     except Exception as exc:  # noqa: BLE001
-        structlog.get_logger().warning(
-            "settings_store.startup_apply_failed", error=str(exc)
-        )
+        structlog.get_logger().warning("settings_store.startup_apply_failed", error=str(exc))
     yield
 
 
@@ -81,9 +81,7 @@ def create_app() -> FastAPI:
         return _index_envelope(exc)
 
     @app.exception_handler(RequestValidationError)
-    async def _validation_handler(
-        _request: Request, exc: RequestValidationError
-    ) -> JSONResponse:
+    async def _validation_handler(_request: Request, exc: RequestValidationError) -> JSONResponse:
         for err in exc.errors():
             ctx = err.get("ctx") or {}
             inner = ctx.get("error")
@@ -101,6 +99,7 @@ def create_app() -> FastAPI:
     app.include_router(jobs_router, prefix="/api")
     app.include_router(settings_router, prefix="/api")
     app.include_router(indexing_router, prefix="/api")
+    app.include_router(posting_router, prefix="/api")
     return app
 
 

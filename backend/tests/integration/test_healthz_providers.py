@@ -1,4 +1,5 @@
 """US4 integration: /healthz envelope contains providers.llm + providers.embedding."""
+
 from __future__ import annotations
 
 import pytest

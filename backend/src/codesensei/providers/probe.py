@@ -1,4 +1,5 @@
 """Provider health probes — no paid API calls (research.md R7)."""
+
 from __future__ import annotations
 
 import httpx

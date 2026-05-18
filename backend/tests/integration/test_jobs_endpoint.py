@@ -1,4 +1,5 @@
 """US1: POST /api/jobs/ping + GET /api/jobs/{id}."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -87,9 +88,7 @@ async def test_get_job_pending(async_client, _patch_enqueue):
 
 
 async def test_get_job_not_found(async_client, _patch_enqueue):
-    _patch_enqueue(
-        lookup_side_effect=JobError(JobErrorCategory.NOT_FOUND, "job not found")
-    )
+    _patch_enqueue(lookup_side_effect=JobError(JobErrorCategory.NOT_FOUND, "job not found"))
     resp = await async_client.get("/api/jobs/unknown-id")
     assert resp.status_code == 404
     body = resp.json()

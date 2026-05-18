@@ -1,4 +1,5 @@
 """Shared pytest fixtures for backend tests."""
+
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
@@ -44,6 +45,7 @@ def mock_probes(monkeypatch) -> Callable[..., None]:
         mock_probes({"db": "ok", "vector": "ok"}, "ok",
                     llm=ProviderState.UNCONFIGURED)
     """
+
     def set_probes(
         db_result: dict[str, str],
         redis_status: str,
@@ -66,8 +68,6 @@ def mock_probes(monkeypatch) -> Callable[..., None]:
         monkeypatch.setattr("codesensei.healthcheck.probe_db", fake_probe_db)
         monkeypatch.setattr("codesensei.healthcheck.probe_redis", fake_probe_redis)
         monkeypatch.setattr("codesensei.healthcheck.probe_llm_provider", fake_probe_llm)
-        monkeypatch.setattr(
-            "codesensei.healthcheck.probe_embedding_provider", fake_probe_embedding
-        )
+        monkeypatch.setattr("codesensei.healthcheck.probe_embedding_provider", fake_probe_embedding)
 
     return set_probes

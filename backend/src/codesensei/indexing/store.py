@@ -1,4 +1,5 @@
 """Atomic chunk replacement + repo CRUD helpers."""
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -73,13 +74,9 @@ async def delete_repo_by_id(session: AsyncSession, repo_id: UUID) -> bool:
     return (result.rowcount or 0) > 0
 
 
-async def write_repo_failure(
-    session: AsyncSession, repo_id: UUID, message: str
-) -> None:
+async def write_repo_failure(session: AsyncSession, repo_id: UUID, message: str) -> None:
     """Stamp `last_error` on a repo row (used by both sync and async failure paths)."""
-    await session.execute(
-        update(Repo).where(Repo.id == repo_id).values(last_error=message)
-    )
+    await session.execute(update(Repo).where(Repo.id == repo_id).values(last_error=message))
 
 
 async def replace_chunks(
@@ -122,10 +119,7 @@ async def replace_chunks(
     # Delete the complement (rows for this repo that aren't in the new set).
     if new_ids:
         await session.execute(
-            text(
-                "DELETE FROM code_chunks "
-                "WHERE repo_id = :repo_id AND id <> ALL(:ids)"
-            ),
+            text("DELETE FROM code_chunks WHERE repo_id = :repo_id AND id <> ALL(:ids)"),
             {"repo_id": repo_id, "ids": new_ids},
         )
     else:

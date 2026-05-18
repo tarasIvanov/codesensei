@@ -1,4 +1,5 @@
 """Indexing orchestrator: clone → chunk → embed → atomic store."""
+
 from __future__ import annotations
 
 import time
@@ -132,9 +133,7 @@ class IndexingService:
                 out_counts.append(sc_count)
         return out_chunks, out_counts
 
-    def _split_chunk_recursive(
-        self, original: ChunkSpec, lines: list[str]
-    ) -> list[ChunkSpec]:
+    def _split_chunk_recursive(self, original: ChunkSpec, lines: list[str]) -> list[ChunkSpec]:
         """Halve `lines` until each piece fits MAX_CHUNK_TOKENS."""
         content = "\n".join(lines)
         if len(self._encoder.encode(content)) <= MAX_CHUNK_TOKENS:
@@ -172,9 +171,7 @@ class IndexingService:
 
     # ------- HTTP-facing entry points -------
 
-    async def dispatch(
-        self, *, source: str, default_branch: str | None
-    ) -> dict[str, object]:
+    async def dispatch(self, *, source: str, default_branch: str | None) -> dict[str, object]:
         """Decide sync vs async based on the pre-scan; deferred-import to keep enqueue optional."""
         canonical, source_kind = normalise_source(source)
         # Pre-scan: need to materialise the working tree exactly once. For sync we'll re-use it.

@@ -1,4 +1,5 @@
 """Async CRUD for app_settings with Fernet wrap for secrets."""
+
 from __future__ import annotations
 
 from types import MappingProxyType
@@ -117,8 +118,6 @@ async def get_effective_settings() -> dict[str, str | None]:
             try:
                 out[row.key] = decrypt(row.value)
             except (InvalidToken, SettingsCryptoError) as exc:
-                _logger.warning(
-                    "settings_store.decrypt_failed", key=row.key, error=str(exc)
-                )
+                _logger.warning("settings_store.decrypt_failed", key=row.key, error=str(exc))
                 out[row.key] = None
     return out

@@ -1,4 +1,5 @@
 """US1: /healthz envelope grows a `worker` field; state never gates overall."""
+
 from __future__ import annotations
 
 import pytest
@@ -22,9 +23,7 @@ async def test_worker_state_reflected_and_never_gates_overall(
     assert "failing" not in body
 
 
-async def test_worker_state_does_not_appear_in_failing(
-    async_client, monkeypatch, mock_probes
-):
+async def test_worker_state_does_not_appear_in_failing(async_client, monkeypatch, mock_probes):
     mock_probes({"db": "down", "vector": "unknown"}, "ok")
 
     async def fake_worker():

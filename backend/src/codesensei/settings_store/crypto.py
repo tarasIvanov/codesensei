@@ -1,4 +1,5 @@
 """Fernet wrapper keyed on Settings.master_key (env-only, never persisted)."""
+
 from __future__ import annotations
 
 from cryptography.fernet import Fernet, InvalidToken

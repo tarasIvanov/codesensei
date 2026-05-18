@@ -1,4 +1,5 @@
 """HTTP endpoints for repo indexing + registry (filled progressively across T019/T020/T037)."""
+
 from __future__ import annotations
 
 from uuid import UUID

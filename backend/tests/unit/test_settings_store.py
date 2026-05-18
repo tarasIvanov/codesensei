@@ -1,4 +1,5 @@
 """US2: settings_store CRUD with whitelist + secret encryption (db mocked)."""
+
 from __future__ import annotations
 
 import pytest

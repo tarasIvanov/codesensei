@@ -1,4 +1,5 @@
 """POST /api/jobs/ping + GET /api/jobs/{job_id}."""
+
 from __future__ import annotations
 
 import structlog

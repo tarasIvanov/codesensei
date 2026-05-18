@@ -1,4 +1,5 @@
 """US1: Prompt snapshot — guards against accidental edits to the LLM contract."""
+
 from __future__ import annotations
 
 from codesensei.review.prompt import SYSTEM_MESSAGE, USER_TEMPLATE, build_messages

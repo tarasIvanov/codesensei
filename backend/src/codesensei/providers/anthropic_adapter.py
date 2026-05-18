@@ -1,4 +1,5 @@
 """Anthropic adapter — chat only (Messages API). No embedding implementation."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

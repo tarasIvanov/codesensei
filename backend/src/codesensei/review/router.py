@@ -1,4 +1,5 @@
 """POST /api/review router."""
+
 from __future__ import annotations
 
 import structlog
@@ -33,9 +34,7 @@ async def post_review(body: ReviewRequest) -> JSONResponse:
         raise
     except Exception:
         _logger.exception("review.failed", error_category="internal")
-        raise ReviewError(
-            ReviewErrorCategory.INTERNAL, "Unexpected server error."
-        ) from None
+        raise ReviewError(ReviewErrorCategory.INTERNAL, "Unexpected server error.") from None
     _logger.info(
         "review.completed",
         provider=result.provider,

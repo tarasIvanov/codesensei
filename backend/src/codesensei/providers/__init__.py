@@ -1,4 +1,5 @@
 """LLMProvider / EmbeddingProvider adapters (ADR-003, spec 002)."""
+
 from codesensei.providers.base import (
     ChatMessage,
     EmbeddingProvider,

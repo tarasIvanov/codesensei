@@ -1,4 +1,5 @@
 """US3: Anthropic adapter — chat happy path + error normalization."""
+
 from __future__ import annotations
 
 from types import SimpleNamespace

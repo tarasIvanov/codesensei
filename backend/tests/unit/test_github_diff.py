@@ -1,4 +1,5 @@
 """US2: GitHub diff fetcher — happy path + error normalization, fully offline."""
+
 from __future__ import annotations
 
 import logging
@@ -13,14 +14,7 @@ from codesensei.review.github_diff import fetch_pr_diff
 
 _API = "https://api.github.com/repos/octo/repo/pulls/7"
 _PR_URL = "https://github.com/octo/repo/pull/7"
-_DIFF_BODY = (
-    "diff --git a/x.py b/x.py\n"
-    "--- a/x.py\n"
-    "+++ b/x.py\n"
-    "@@ -1 +1 @@\n"
-    "-old\n"
-    "+new\n"
-)
+_DIFF_BODY = "diff --git a/x.py b/x.py\n--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-old\n+new\n"
 
 
 @pytest.fixture(autouse=True)
@@ -102,9 +96,7 @@ async def test_fetch_500(_respx_block_unintercepted_http: respx.MockRouter):
 
 
 async def test_fetch_timeout(_respx_block_unintercepted_http: respx.MockRouter):
-    _respx_block_unintercepted_http.get(_API).mock(
-        side_effect=httpx.TimeoutException("slow")
-    )
+    _respx_block_unintercepted_http.get(_API).mock(side_effect=httpx.TimeoutException("slow"))
     with pytest.raises(ReviewError) as exc:
         await fetch_pr_diff(_PR_URL)
     assert exc.value.category is ReviewErrorCategory.GITHUB_FETCH_FAILED
@@ -112,9 +104,7 @@ async def test_fetch_timeout(_respx_block_unintercepted_http: respx.MockRouter):
 
 
 async def test_fetch_connect_error(_respx_block_unintercepted_http: respx.MockRouter):
-    _respx_block_unintercepted_http.get(_API).mock(
-        side_effect=httpx.ConnectError("dns")
-    )
+    _respx_block_unintercepted_http.get(_API).mock(side_effect=httpx.ConnectError("dns"))
     with pytest.raises(ReviewError) as exc:
         await fetch_pr_diff(_PR_URL)
     assert exc.value.category is ReviewErrorCategory.GITHUB_FETCH_FAILED

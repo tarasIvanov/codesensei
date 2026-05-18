@@ -1,4 +1,5 @@
 """US1: ping_job pure-function test."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta

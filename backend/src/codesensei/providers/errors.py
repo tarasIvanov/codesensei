@@ -1,4 +1,5 @@
 """Normalized provider exception + HTTP-status classification (contracts/provider_error.md)."""
+
 from __future__ import annotations
 
 

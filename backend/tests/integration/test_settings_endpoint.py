@@ -1,4 +1,5 @@
 """US2: GET/POST /api/settings."""
+
 from __future__ import annotations
 
 import logging
@@ -24,7 +25,8 @@ def fake_store(monkeypatch):
 
     async def fake_get_effective():
         return {
-            k: rows.get(k) for k in (
+            k: rows.get(k)
+            for k in (
                 "LLM_PROVIDER",
                 "EMBEDDING_PROVIDER",
                 "LLM_MODEL",
@@ -50,9 +52,7 @@ def fake_store(monkeypatch):
     )
     monkeypatch.setattr("codesensei.settings_store.api.store.set_setting", fake_set)
     monkeypatch.setattr("codesensei.settings_store.api.store.delete_setting", fake_delete)
-    monkeypatch.setattr(
-        "codesensei.settings_store.api.apply_store_overrides_to_env", fake_apply
-    )
+    monkeypatch.setattr("codesensei.settings_store.api.apply_store_overrides_to_env", fake_apply)
     return rows
 
 
@@ -81,16 +81,12 @@ async def test_post_unknown_field_rejected(async_client, fake_store):
 
 
 async def test_post_invalid_llm_provider_rejected(async_client, fake_store):
-    resp = await async_client.post(
-        "/api/settings/", json={"active_llm_provider": "magic"}
-    )
+    resp = await async_client.post("/api/settings/", json={"active_llm_provider": "magic"})
     assert resp.status_code == 400
     assert resp.json()["error"]["category"] == "invalid_input"
 
 
-async def test_post_anthropic_embedding_rejected_with_002_message(
-    async_client, fake_store
-):
+async def test_post_anthropic_embedding_rejected_with_002_message(async_client, fake_store):
     resp = await async_client.post(
         "/api/settings/", json={"active_embedding_provider": "anthropic"}
     )
@@ -100,14 +96,10 @@ async def test_post_anthropic_embedding_rejected_with_002_message(
     assert "openai, ollama" in msg
 
 
-async def test_post_secret_without_master_key_locked(
-    async_client, fake_store, monkeypatch
-):
+async def test_post_secret_without_master_key_locked(async_client, fake_store, monkeypatch):
     monkeypatch.delenv("MASTER_KEY", raising=False)
     get_settings.cache_clear()
-    resp = await async_client.post(
-        "/api/settings/", json={"openai_api_key": "sk-anything"}
-    )
+    resp = await async_client.post("/api/settings/", json={"openai_api_key": "sk-anything"})
     assert resp.status_code == 503
     assert resp.json()["error"]["category"] == "settings_locked"
     assert "MASTER_KEY" in resp.json()["error"]["message"]
@@ -138,9 +130,7 @@ async def test_post_empty_string_clears_field(async_client, fake_store):
 async def test_post_logs_no_secret_plaintext(async_client, fake_store, caplog):
     caplog.set_level(logging.INFO)
     canary = "sk-CANARY-SECRET-ZZZZ"
-    resp = await async_client.post(
-        "/api/settings/", json={"openai_api_key": canary}
-    )
+    resp = await async_client.post("/api/settings/", json={"openai_api_key": canary})
     assert resp.status_code == 200
     blob = " ".join(rec.getMessage() for rec in caplog.records) + " ".join(
         str(rec.args or "") for rec in caplog.records

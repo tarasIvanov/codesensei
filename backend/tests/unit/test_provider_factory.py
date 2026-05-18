@@ -1,4 +1,5 @@
 """US1+US2: provider factory selection + Anthropic-embedding rejection."""
+
 from __future__ import annotations
 
 import pytest

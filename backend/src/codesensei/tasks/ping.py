@@ -1,4 +1,5 @@
 """Trivial demo job that just stamps the current UTC time."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime

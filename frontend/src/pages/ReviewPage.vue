@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 
 import FindingsList, { type Finding } from '../components/FindingsList.vue'
 import ContextFilesPanel from '../components/ContextFilesPanel.vue'
+import PostToGitHubPanel from '../components/PostToGitHubPanel.vue'
 import { ReviewApiError, runReview, type ReviewResult } from '../api/review'
 import { listRepos, type RepoEntry } from '../api/repos'
 
@@ -115,6 +116,12 @@ const findings = computed<Finding[]>(() => result.value?.findings ?? [])
       v-if="result"
       :findings="findings"
       :verdict="result.verdict"
+    />
+
+    <PostToGitHubPanel
+      v-if="result && prUrl.trim()"
+      :review-result="result"
+      :pr-url="prUrl.trim()"
     />
   </section>
 </template>

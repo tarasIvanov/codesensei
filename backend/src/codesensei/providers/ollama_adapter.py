@@ -1,4 +1,5 @@
 """Ollama adapter — chat + embeddings via local Ollama HTTP API."""
+
 from __future__ import annotations
 
 import httpx

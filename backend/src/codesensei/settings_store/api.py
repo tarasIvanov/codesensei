@@ -1,4 +1,5 @@
 """GET /api/settings + POST /api/settings — operator-facing CRUD."""
+
 from __future__ import annotations
 
 import structlog

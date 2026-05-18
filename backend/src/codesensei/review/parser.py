@@ -1,4 +1,5 @@
 """Strict parse of LLM output → (Verdict, list[Finding]). Fail-fast on malformed."""
+
 from __future__ import annotations
 
 import json
@@ -22,9 +23,7 @@ def _strip_fences(text: str) -> str:
     return body
 
 
-def parse_review(
-    provider_name: str, raw: str
-) -> tuple[Verdict, list[Finding]]:
+def parse_review(provider_name: str, raw: str) -> tuple[Verdict, list[Finding]]:
     cleaned = _strip_fences(raw)
     if not cleaned:
         raise ReviewError(

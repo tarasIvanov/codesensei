@@ -1,4 +1,5 @@
 """US3: Ollama adapter — chat + embed paths via respx-mocked HTTP."""
+
 from __future__ import annotations
 
 import httpx
