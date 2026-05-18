@@ -12,12 +12,22 @@ export type ReviewErrorCategory =
   | 'embedding_mismatch'
   | 'internal'
 
+export interface TemporalEntry {
+  commit_sha: string
+  short_sha: string
+  author_email: string
+  author_date: string
+  subject: string
+  hunk_lines_changed: number
+}
+
 export interface Finding {
   file: string
   line: number | null
   severity: Severity
   message: string
   suggestion?: string | null
+  temporal_context?: TemporalEntry[] | null
 }
 
 export interface ReviewResult {
