@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -31,8 +32,19 @@ class Settings(BaseSettings):
     github_token: str = ""
 
     master_key: str = ""
+    master_key_file: str = ""
     worker_heartbeat_stale_s: int = 60
     job_result_ttl_s: int = 3600
+
+    @model_validator(mode="after")
+    def _resolve_master_key(self) -> "Settings":
+        if not self.master_key and self.master_key_file:
+            from codesensei.settings_store.master_key import resolve_from_file
+
+            resolved = resolve_from_file(self.master_key_file)
+            if resolved:
+                object.__setattr__(self, "master_key", resolved)
+        return self
 
 
 @lru_cache(maxsize=1)

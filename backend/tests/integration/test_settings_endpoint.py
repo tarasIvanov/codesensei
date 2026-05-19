@@ -12,6 +12,7 @@ from codesensei.config import get_settings
 
 @pytest.fixture(autouse=True)
 def _reset(monkeypatch):
+    monkeypatch.delenv("MASTER_KEY_FILE", raising=False)
     monkeypatch.setenv("MASTER_KEY", Fernet.generate_key().decode())
     get_settings.cache_clear()
     yield

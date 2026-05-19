@@ -4,6 +4,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import Badge from '../components/primitives/Badge.vue'
 import Button from '../components/primitives/Button.vue'
 import Card from '../components/primitives/Card.vue'
+import FieldHint from '../components/primitives/FieldHint.vue'
 import { useToast } from '../composables/useToast'
 import { ReviewApiError } from '../api/review'
 import {
@@ -148,8 +149,10 @@ async function runGithubTest() {
           borderRadius: 'var(--radius-sm)',
         }"
       >
-        Settings storage is locked — set <code>MASTER_KEY</code> in <code>.env</code> before
-        saving credentials. You can still change provider names and model overrides.
+        Settings storage is locked — the api container couldn't read or generate a
+        <code>MASTER_KEY</code>. Check the <code>codesensei_secrets</code> docker volume
+        is writable, or set <code>MASTER_KEY</code> in <code>.env</code> manually. Provider
+        names and model overrides can still be saved.
       </p>
 
       <fieldset
@@ -159,7 +162,10 @@ async function runGithubTest() {
           Active providers
         </legend>
         <label class="flex flex-col gap-1 text-sm">
-          <span :style="{ color: 'var(--color-text)' }">LLM provider</span>
+          <span class="flex items-center gap-1.5">
+            <span :style="{ color: 'var(--color-text)' }">LLM provider</span>
+            <FieldHint text="Which provider is called to generate the review. Pick the one whose API key you've configured below (or 'ollama' for the in-compose local model)." />
+          </span>
           <select
             v-model="activeLlm"
             class="focus-ring px-2 py-1.5 text-sm font-mono"
@@ -176,7 +182,10 @@ async function runGithubTest() {
           </select>
         </label>
         <label class="flex flex-col gap-1 text-sm">
-          <span :style="{ color: 'var(--color-text)' }">Embedding provider</span>
+          <span class="flex items-center gap-1.5">
+            <span :style="{ color: 'var(--color-text)' }">Embedding provider</span>
+            <FieldHint text="Used to vectorize indexed repositories and embed PR diffs for RAG retrieval. Must match the provider that originally indexed each repo — switching mid-flight triggers an embedding_mismatch refusal until you re-index." />
+          </span>
           <select
             v-model="activeEmbedding"
             class="focus-ring px-2 py-1.5 text-sm font-mono"
@@ -198,7 +207,10 @@ async function runGithubTest() {
           Model overrides
         </legend>
         <label class="flex flex-col gap-1 text-sm">
-          <span :style="{ color: 'var(--color-text)' }">LLM model</span>
+          <span class="flex items-center gap-1.5">
+            <span :style="{ color: 'var(--color-text)' }">LLM model</span>
+            <FieldHint text="Override the adapter default. Examples: gpt-4o-mini (openai), claude-3-5-sonnet-latest (anthropic), llama3.1:8b (ollama). Leave blank for the baked-in default." />
+          </span>
           <input
             v-model="llmModel"
             type="text"
@@ -214,7 +226,10 @@ async function runGithubTest() {
           />
         </label>
         <label class="flex flex-col gap-1 text-sm">
-          <span :style="{ color: 'var(--color-text)' }">Embedding model</span>
+          <span class="flex items-center gap-1.5">
+            <span :style="{ color: 'var(--color-text)' }">Embedding model</span>
+            <FieldHint text="Override the default embedding model. Examples: text-embedding-3-small (openai, 1536-dim), nomic-embed-text (ollama, 768-dim). Changing the model requires re-indexing existing repos." />
+          </span>
           <input
             v-model="embeddingModel"
             type="text"
@@ -230,7 +245,10 @@ async function runGithubTest() {
           />
         </label>
         <label class="flex flex-col gap-1 text-sm">
-          <span :style="{ color: 'var(--color-text)' }">Ollama base URL</span>
+          <span class="flex items-center gap-1.5">
+            <span :style="{ color: 'var(--color-text)' }">Ollama base URL</span>
+            <FieldHint text="Where the Ollama HTTP API lives. Default http://ollama:11434 talks to the in-compose service (opt-in: docker compose --profile ollama up). Use http://host.docker.internal:11434 for an Ollama running on the host." />
+          </span>
           <input
             v-model="ollamaBaseUrl"
             type="text"
@@ -252,7 +270,10 @@ async function runGithubTest() {
           Credentials
         </legend>
         <label class="flex flex-col gap-1 text-sm">
-          <span :style="{ color: 'var(--color-text)' }">OpenAI API key</span>
+          <span class="flex items-center gap-1.5">
+            <span :style="{ color: 'var(--color-text)' }">OpenAI API key</span>
+            <FieldHint text="Stored encrypted at rest via MASTER_KEY (Fernet). Required if openai is the active LLM or embedding provider. Get one at platform.openai.com/api-keys." />
+          </span>
           <div class="flex gap-2">
             <input
               v-model="openaiKey"
@@ -280,11 +301,14 @@ async function runGithubTest() {
           </div>
           <p class="text-xs text-muted m-0">
             OpenAI connectivity is shown on the
-            <RouterLink to="/" class="underline">Status</RouterLink> page.
+            <RouterLink to="/status" class="underline">Status</RouterLink> page.
           </p>
         </label>
         <label class="flex flex-col gap-1 text-sm">
-          <span :style="{ color: 'var(--color-text)' }">Anthropic API key</span>
+          <span class="flex items-center gap-1.5">
+            <span :style="{ color: 'var(--color-text)' }">Anthropic API key</span>
+            <FieldHint text="Stored encrypted at rest. Required if anthropic is the active LLM provider. Get one at console.anthropic.com/settings/keys." />
+          </span>
           <div class="flex gap-2">
             <input
               v-model="anthropicKey"
@@ -312,7 +336,10 @@ async function runGithubTest() {
           </div>
         </label>
         <label class="flex flex-col gap-1 text-sm">
-          <span :style="{ color: 'var(--color-text)' }">GitHub token</span>
+          <span class="flex items-center gap-1.5">
+            <span :style="{ color: 'var(--color-text)' }">GitHub token</span>
+            <FieldHint text="Fine-grained PAT for a codesensei-bot account. Required permissions: Pull requests (read+write), Contents (read). Used by /review's Post to GitHub flow. Test connection runs a read-only GET /user probe." />
+          </span>
           <div class="flex gap-2">
             <input
               v-model="githubToken"

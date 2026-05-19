@@ -14,10 +14,13 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       MASTER_KEY: ${MASTER_KEY:-}
+      MASTER_KEY_FILE: ${MASTER_KEY_FILE:-/var/lib/codesensei/master.key}
       WORKER_HEARTBEAT_STALE_S: ${WORKER_HEARTBEAT_STALE_S:-60}
       JOB_RESULT_TTL_S: ${JOB_RESULT_TTL_S:-3600}
     ports:
       - "${API_HOST_PORT:-8000}:8000"
+    volumes:
+      - codesensei_secrets:/var/lib/codesensei
     depends_on:
       postgres:
         condition: service_healthy
@@ -45,8 +48,11 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       MASTER_KEY: ${MASTER_KEY:-}
+      MASTER_KEY_FILE: ${MASTER_KEY_FILE:-/var/lib/codesensei/master.key}
       JOB_RESULT_TTL_S: ${JOB_RESULT_TTL_S:-3600}
     command: ["arq", "codesensei.tasks.worker.WorkerSettings"]
+    volumes:
+      - codesensei_secrets:/var/lib/codesensei
     depends_on:
       redis:
         condition: service_healthy
@@ -116,3 +122,4 @@ services:
 volumes:
   postgres_data:
   ollama_data:
+  codesensei_secrets:

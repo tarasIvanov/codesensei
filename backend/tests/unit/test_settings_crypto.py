@@ -10,7 +10,8 @@ from codesensei.settings_store import crypto
 
 
 @pytest.fixture(autouse=True)
-def _reset():
+def _reset(monkeypatch):
+    monkeypatch.delenv("MASTER_KEY_FILE", raising=False)
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
