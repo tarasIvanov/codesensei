@@ -25,6 +25,7 @@ from codesensei.review.git_temporal import (
 from codesensei.review.parser import parse_review
 from codesensei.review.prompt import build_messages
 from codesensei.review.schema import Finding, ReviewResult, TemporalEntry
+from codesensei.reviews_history import store as history_store
 
 _logger = structlog.get_logger(__name__)
 
@@ -119,7 +120,51 @@ async def _retrieve_context(repo_id: UUID, diff: str) -> RetrievalResult:
         ) from exc
 
 
-async def _run_chat(diff: str, *, repo_id: UUID | None = None) -> ReviewResult:
+async def _persist_run(
+    *,
+    input_kind: str,
+    pr_url: str | None,
+    repo_id: UUID | None,
+    diff: str,
+    verdict: str,
+    provider_name: str,
+    elapsed_ms: int,
+    findings: list[Finding],
+    context_files: list[str] | None,
+) -> None:
+    """Best-effort persist + LRU prune. Failure logs a warning and proceeds."""
+    try:
+        sessionmaker = get_sessionmaker()
+        async with sessionmaker() as session:
+            run = await history_store.insert_run(
+                session,
+                input_kind=input_kind,
+                pr_url=pr_url,
+                repo_id=repo_id,
+                diff=diff,
+                verdict=verdict,
+                provider=provider_name,
+                elapsed_ms=elapsed_ms,
+                findings=findings,
+                context_files=context_files,
+            )
+            pruned = await history_store.prune_to_cap(session)
+        _logger.info(
+            "review_persisted",
+            run_id=str(run.id),
+            finding_count=len(findings),
+            pruned=pruned,
+        )
+    except Exception as exc:  # noqa: BLE001 — best-effort: live response is canonical
+        _logger.warning("review_persist_failed", reason=str(exc)[:200])
+
+
+async def _run_chat(
+    diff: str,
+    *,
+    repo_id: UUID | None = None,
+    original_pr_url: str | None = None,
+) -> ReviewResult:
     _enforce_size(diff)
 
     retrieved: RetrievalResult | None = None
@@ -189,13 +234,26 @@ async def _run_chat(diff: str, *, repo_id: UUID | None = None) -> ReviewResult:
                 if len(context_files) >= 10:
                     break
 
-    return ReviewResult(
+    result = ReviewResult(
         verdict=verdict,
         findings=findings,
         provider=provider.name,
         elapsed_ms=elapsed_ms,
         context_files=context_files,
     )
+
+    await _persist_run(
+        input_kind="pr_url" if original_pr_url else "diff",
+        pr_url=original_pr_url,
+        repo_id=repo_id,
+        diff=diff,
+        verdict=str(verdict),
+        provider_name=provider.name,
+        elapsed_ms=elapsed_ms,
+        findings=findings,
+        context_files=context_files,
+    )
+    return result
 
 
 class ReviewService:
@@ -208,4 +266,4 @@ class ReviewService:
         from codesensei.review.github_diff import fetch_pr_diff
 
         diff = await fetch_pr_diff(pr_url)
-        return await _run_chat(diff, repo_id=repo_id)
+        return await _run_chat(diff, repo_id=repo_id, original_pr_url=pr_url)

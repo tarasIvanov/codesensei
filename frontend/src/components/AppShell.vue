@@ -12,6 +12,7 @@ const NAV = [
   { to: '/', label: 'Status' },
   { to: '/review', label: 'Review' },
   { to: '/repos', label: 'Repos' },
+  { to: '/history', label: 'History' },
   { to: '/settings', label: 'Settings' },
 ]
 
