@@ -95,6 +95,7 @@ def fake_db(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _reset_settings(monkeypatch):
+    monkeypatch.delenv("MASTER_KEY_FILE", raising=False)
     monkeypatch.setenv("MASTER_KEY", Fernet.generate_key().decode())
     get_settings.cache_clear()
     yield
