@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
 import Button from '../components/primitives/Button.vue'
 import Card from '../components/primitives/Card.vue'
@@ -18,15 +19,19 @@ import { ReviewApiError, runReview, type ReviewResult } from '../api/review'
 import { listRepos, type RepoEntry } from '../api/repos'
 
 const toast = useToast()
+const route = useRoute()
+const router = useRouter()
 
 const PR_URL_KEY = 'codesensei.review.prUrl'
 const RESULT_KEY = 'codesensei.review.result'
 const RECENT_PR_KEY = 'codesensei.review.recentPrs'
 const MANUAL_REPO_KEY = 'codesensei.review.manualRepoId'
+const DISMISSED_KEY = 'codesensei.review.dismissed'
 
 const prUrl = usePersistedRef<string>(PR_URL_KEY, '')
 const result = usePersistedRef<ReviewResult | null>(RESULT_KEY, null)
 const manualRepoOverride = usePersistedRef<string | null>(MANUAL_REPO_KEY, null)
+const dismissedFindings = usePersistedRef<number[]>(DISMISSED_KEY, [])
 
 const isLoading = ref(false)
 const errorMessage = ref('')
@@ -88,7 +93,13 @@ async function refreshRepos(): Promise<void> {
   }
 }
 
-onMounted(refreshRepos)
+onMounted(async () => {
+  await refreshRepos()
+  if (route.query.autorun === '1' && prUrl.value.trim().length > 0) {
+    router.replace({ path: '/review', query: {} })
+    void submit()
+  }
+})
 
 watch(prUrl, (v) => {
   if (manualRepoOverride.value !== null) {
@@ -102,6 +113,7 @@ async function submit(): Promise<void> {
   const trimmed = prUrl.value.trim()
   isLoading.value = true
   result.value = null
+  dismissedFindings.value = []
   errorMessage.value = ''
   errorRetryable.value = false
   try {
@@ -125,9 +137,30 @@ async function submit(): Promise<void> {
 
 function clearResult(): void {
   result.value = null
+  dismissedFindings.value = []
   errorMessage.value = ''
   errorRetryable.value = false
 }
+
+function onDismiss(index: number): void {
+  if (!dismissedFindings.value.includes(index)) {
+    dismissedFindings.value = [...dismissedFindings.value, index]
+  }
+}
+
+function onRestore(index: number): void {
+  dismissedFindings.value = dismissedFindings.value.filter((i) => i !== index)
+}
+
+const keptResult = computed<ReviewResult | null>(() => {
+  if (!result.value) return null
+  if (dismissedFindings.value.length === 0) return result.value
+  const dismissed = new Set(dismissedFindings.value)
+  return {
+    ...result.value,
+    findings: (result.value.findings ?? []).filter((_, i) => !dismissed.has(i)),
+  }
+})
 
 function clearPr(): void {
   prUrl.value = ''
@@ -363,11 +396,18 @@ const verdictTone = computed(() => {
     </div>
   </Card>
 
-  <FindingsList v-if="result && findings.length > 0" :findings="findings" />
+  <FindingsList
+    v-if="result && findings.length > 0"
+    :findings="findings"
+    :dismissed="dismissedFindings"
+    dismissible
+    @dismiss="onDismiss"
+    @restore="onRestore"
+  />
 
   <PostToGitHubPanel
-    v-if="result && prUrl.trim()"
-    :review-result="result"
+    v-if="keptResult && prUrl.trim()"
+    :review-result="keptResult"
     :pr-url="prUrl.trim()"
   />
 </template>

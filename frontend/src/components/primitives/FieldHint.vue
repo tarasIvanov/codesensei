@@ -8,7 +8,7 @@ defineProps<{ text: string }>()
   <Tooltip :text="text" multiline>
     <button
       type="button"
-      class="focus-ring inline-flex items-center justify-center text-[10px] font-semibold cursor-help select-none"
+      class="focus-ring inline-flex items-center justify-center text-[11px] font-serif italic cursor-help select-none"
       tabindex="0"
       aria-label="Field hint"
       :style="{
@@ -19,7 +19,8 @@ defineProps<{ text: string }>()
         color: 'var(--color-text-muted)',
         border: '1px solid var(--color-border)',
         lineHeight: '1',
+        fontWeight: '600',
       }"
-    >?</button>
+    >i</button>
   </Tooltip>
 </template>

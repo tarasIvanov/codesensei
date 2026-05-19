@@ -14,7 +14,7 @@ import {
   getReview,
   type ReviewRunDetail,
 } from '../api/reviews'
-import { runReview, type ReviewResult } from '../api/review'
+import type { ReviewResult } from '../api/review'
 
 const props = defineProps<{ runId: string }>()
 
@@ -76,20 +76,21 @@ async function onDelete() {
   }
 }
 
-async function onRerun() {
+function onRerun() {
   if (!run.value || isRerunning.value) return
+  if (run.value.input_kind !== 'pr_url' || !run.value.pr_url) {
+    toast.push({
+      category: 'info',
+      message: 'Diff-only runs cannot be re-played from history — open /review and paste the diff manually.',
+    })
+    return
+  }
   isRerunning.value = true
   try {
-    if (run.value.input_kind === 'pr_url' && run.value.pr_url) {
-      await runReview({ pr_url: run.value.pr_url })
-    } else {
-      await runReview({ diff: run.value.diff })
-    }
-    toast.push({ category: 'success', message: 'Re-run finished. Returning to history.' })
-    router.push('/history')
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    toast.push({ category: 'error', message: `Re-run failed: ${message}` })
+    localStorage.setItem('codesensei.review.prUrl', JSON.stringify(run.value.pr_url))
+    localStorage.removeItem('codesensei.review.result')
+    localStorage.removeItem('codesensei.review.dismissed')
+    router.push({ path: '/review', query: { autorun: '1' } })
   } finally {
     isRerunning.value = false
   }
