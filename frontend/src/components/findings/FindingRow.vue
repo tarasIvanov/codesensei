@@ -23,7 +23,20 @@ export interface Finding {
   temporal_context?: TemporalEntry[] | null
 }
 
-const props = defineProps<{ finding: Finding; patch?: string | null }>()
+const props = withDefaults(
+  defineProps<{
+    finding: Finding
+    patch?: string | null
+    dismissed?: boolean
+    dismissible?: boolean
+  }>(),
+  { dismissed: false, dismissible: false },
+)
+
+const emit = defineEmits<{
+  (e: 'dismiss'): void
+  (e: 'restore'): void
+}>()
 
 const historyEntries = computed<TemporalEntry[]>(() => props.finding.temporal_context ?? [])
 const hasHistory = computed(() => historyEntries.value.length > 0)
@@ -50,6 +63,7 @@ function truncateSubject(subject: string): string {
     :style="{
       backgroundColor: 'var(--color-bg-card)',
       borderTop: '1px solid var(--color-border)',
+      opacity: dismissed ? 0.55 : 1,
     }"
   >
     <header class="flex items-center gap-2 mb-1">
@@ -57,22 +71,46 @@ function truncateSubject(subject: string): string {
       <Badge v-if="showVolatilityBadge" tone="info">
         {{ historyEntries.length }} changes
       </Badge>
+      <Badge v-if="dismissed" tone="neutral">dismissed</Badge>
       <span class="text-xs font-mono text-muted">
         {{ finding.line !== null ? `line ${finding.line}` : 'file-level' }}
       </span>
+      <button
+        v-if="dismissible"
+        type="button"
+        class="focus-ring ml-auto text-xs px-2 py-0.5 cursor-pointer"
+        :style="{
+          border: '1px solid var(--color-border)',
+          borderRadius: 'var(--radius-sm)',
+          backgroundColor: 'var(--color-bg-elevated)',
+          color: 'var(--color-text-muted)',
+        }"
+        @click="dismissed ? emit('restore') : emit('dismiss')"
+      >{{ dismissed ? 'Restore' : 'Dismiss' }}</button>
     </header>
-    <p class="m-0 text-sm leading-relaxed break-words" :style="{ color: 'var(--color-text)' }">
+    <p
+      class="m-0 text-sm leading-relaxed break-words"
+      :style="{
+        color: 'var(--color-text)',
+        textDecoration: dismissed ? 'line-through' : 'none',
+      }"
+    >
       {{ finding.message }}
     </p>
-    <pre
-      v-if="finding.suggestion"
-      class="mt-2 p-2 text-xs font-mono whitespace-pre-wrap break-words overflow-x-auto"
-      :style="{
-        backgroundColor: 'var(--color-neutral-900)',
-        color: 'var(--color-neutral-50)',
-        borderRadius: 'var(--radius-sm)',
-      }"
-    >{{ finding.suggestion }}</pre>
+    <div v-if="finding.suggestion" class="mt-2">
+      <div
+        class="text-[10px] font-semibold uppercase tracking-wide mb-1"
+        :style="{ color: 'var(--color-text-muted)' }"
+      >Suggested fix</div>
+      <pre
+        class="m-0 p-2 text-xs font-mono whitespace-pre-wrap break-words overflow-x-auto"
+        :style="{
+          backgroundColor: 'var(--color-neutral-900)',
+          color: 'var(--color-neutral-50)',
+          borderRadius: 'var(--radius-sm)',
+        }"
+      >{{ finding.suggestion }}</pre>
+    </div>
     <CodeContextSnippet
       v-if="patch && finding.line !== null"
       :patch="patch"

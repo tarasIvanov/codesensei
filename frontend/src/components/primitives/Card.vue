@@ -12,7 +12,7 @@ withDefaults(
 
 <template>
   <section
-    class="surface-card overflow-hidden"
+    class="surface-card"
     :style="{
       backgroundColor: 'var(--color-bg-card)',
       borderColor: 'var(--color-border)',

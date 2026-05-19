@@ -9,6 +9,7 @@ import { useTheme } from '../composables/useTheme'
 const theme = useTheme()
 
 const NAV = [
+  { to: '/status', label: 'Status' },
   { to: '/review', label: 'Review' },
   { to: '/repos', label: 'Repos' },
   { to: '/history', label: 'History' },
