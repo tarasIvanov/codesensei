@@ -1,6 +1,18 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import Badge from '../primitives/Badge.vue'
+import Collapsible from '../primitives/Collapsible.vue'
 import CodeContextSnippet from './CodeContextSnippet.vue'
 import SeverityPill, { type Severity } from './SeverityPill.vue'
+
+export interface TemporalEntry {
+  commit_sha: string
+  short_sha: string
+  author_email: string
+  author_date: string
+  subject: string
+  hunk_lines_changed: number
+}
 
 export interface Finding {
   file: string
@@ -8,9 +20,28 @@ export interface Finding {
   severity: Severity
   message: string
   suggestion?: string | null
+  temporal_context?: TemporalEntry[] | null
 }
 
-defineProps<{ finding: Finding; patch?: string | null }>()
+const props = defineProps<{ finding: Finding; patch?: string | null }>()
+
+const historyEntries = computed<TemporalEntry[]>(() => props.finding.temporal_context ?? [])
+const hasHistory = computed(() => historyEntries.value.length > 0)
+const showVolatilityBadge = computed(() => historyEntries.value.length >= 3)
+
+function formatDate(iso: string): string {
+  return iso.slice(0, 10)
+}
+
+function formatAuthor(email: string): string {
+  const at = email.indexOf('@')
+  return at > 0 ? email.slice(0, at) : email
+}
+
+function truncateSubject(subject: string): string {
+  if (subject.length <= 80) return subject
+  return subject.slice(0, 79) + '…'
+}
 </script>
 
 <template>
@@ -23,6 +54,9 @@ defineProps<{ finding: Finding; patch?: string | null }>()
   >
     <header class="flex items-center gap-2 mb-1">
       <SeverityPill :severity="finding.severity" />
+      <Badge v-if="showVolatilityBadge" tone="info">
+        {{ historyEntries.length }} changes
+      </Badge>
       <span class="text-xs font-mono text-muted">
         {{ finding.line !== null ? `line ${finding.line}` : 'file-level' }}
       </span>
@@ -44,5 +78,45 @@ defineProps<{ finding: Finding; patch?: string | null }>()
       :patch="patch"
       :target-line="finding.line"
     />
+    <div v-if="hasHistory" class="mt-3">
+      <Collapsible :default-open="false">
+        <template #header="{ open }">
+          <span
+            class="inline-flex items-center gap-1 text-xs font-medium"
+            :style="{ color: 'var(--color-text-muted)' }"
+          >
+            <span :style="{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block', transition: 'transform 150ms ease' }">▸</span>
+            History ({{ historyEntries.length }} {{ historyEntries.length === 1 ? 'change' : 'changes' }})
+          </span>
+        </template>
+        <template #body>
+          <table
+            class="w-full text-xs mt-2"
+            :style="{ borderCollapse: 'collapse' }"
+          >
+            <thead>
+              <tr :style="{ color: 'var(--color-text-muted)' }">
+                <th class="text-left font-medium pb-1 pr-3">SHA</th>
+                <th class="text-left font-medium pb-1 pr-3">Date</th>
+                <th class="text-left font-medium pb-1 pr-3">Author</th>
+                <th class="text-left font-medium pb-1">Subject</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="entry in historyEntries"
+                :key="entry.commit_sha"
+                :style="{ borderTop: '1px solid var(--color-border)' }"
+              >
+                <td class="font-mono py-1 pr-3 text-muted">{{ entry.short_sha }}</td>
+                <td class="py-1 pr-3">{{ formatDate(entry.author_date) }}</td>
+                <td class="py-1 pr-3">{{ formatAuthor(entry.author_email) }}</td>
+                <td class="py-1 break-words">{{ truncateSubject(entry.subject) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </template>
+      </Collapsible>
+    </div>
   </article>
 </template>
