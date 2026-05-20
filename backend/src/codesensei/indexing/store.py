@@ -87,6 +87,7 @@ async def replace_chunks(
     embedding_provider: str,
     embedding_model: str,
     indexed_at: datetime,
+    codesensei_ignore_patterns: list[str] | None = None,
 ) -> int:
     """Atomic T2 swap: delete old chunks, insert new ones, refresh repo metadata.
 
@@ -134,6 +135,7 @@ async def replace_chunks(
             embedding_provider=embedding_provider,
             embedding_model=embedding_model,
             last_error=None,
+            codesensei_ignore_patterns=codesensei_ignore_patterns,
         )
     )
     return len(new_chunks)

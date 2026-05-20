@@ -12,6 +12,7 @@ from codesensei.config import get_settings
 from codesensei.healthcheck import router as healthcheck_router
 from codesensei.indexing.api import router as indexing_router
 from codesensei.indexing.errors import IndexError as _IdxError
+from codesensei.jobs_stream.router import router as jobs_stream_router
 from codesensei.logging_config import configure_logging
 from codesensei.posting.api import router as posting_router
 from codesensei.review.errors import ReviewError, ReviewErrorCategory
@@ -102,6 +103,7 @@ def create_app() -> FastAPI:
     app.include_router(indexing_router, prefix="/api")
     app.include_router(posting_router, prefix="/api")
     app.include_router(reviews_history_router, prefix="/api")
+    app.include_router(jobs_stream_router, prefix="/api")
     return app
 
 

@@ -11,6 +11,7 @@ export interface RepoEntry {
   embedding_model: string | null
   status: RepoStatus
   last_error: string | null
+  codesensei_ignore_patterns?: string[] | null
 }
 
 export interface CreateIndexBody {

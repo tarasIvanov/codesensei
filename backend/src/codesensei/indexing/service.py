@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -21,6 +22,7 @@ from codesensei.indexing.chunker import (
 )
 from codesensei.indexing.clone import materialise, normalise_source
 from codesensei.indexing.errors import IndexError, IndexErrorCategory
+from codesensei.indexing.ignore import parse_ignore_file
 from codesensei.indexing.models import Repo
 from codesensei.indexing.store import (
     ChunkInsert,
@@ -33,6 +35,8 @@ from codesensei.indexing.store import (
 )
 from codesensei.providers.errors import ProviderError
 from codesensei.providers.factory import get_embedding_provider
+
+ProgressCallback = Callable[[dict[str, Any]], Awaitable[None]]
 
 MAX_CHUNKS_PER_REPO = 5_000
 SYNC_FILE_THRESHOLD = 200
@@ -78,6 +82,7 @@ def _serialise_repo(repo: Repo) -> dict[str, object]:
         "embedding_model": repo.embedding_model,
         "status": _repo_status(repo),
         "last_error": repo.last_error,
+        "codesensei_ignore_patterns": repo.codesensei_ignore_patterns,
     }
 
 
@@ -236,7 +241,12 @@ class IndexingService:
 
     # ------- Async-worker entry point -------
 
-    async def run_for_existing_repo(self, repo_id: UUID) -> dict[str, object]:
+    async def run_for_existing_repo(
+        self,
+        repo_id: UUID,
+        *,
+        on_progress: ProgressCallback | None = None,
+    ) -> dict[str, object]:
         """Called from the arq worker. Re-clones the source and fills the row."""
         async with self._sessionmaker() as session:
             row = await fetch_repo(session, repo_id)
@@ -252,6 +262,7 @@ class IndexingService:
                     root=root,
                     source=source,
                     delete_on_failure=False,
+                    on_progress=on_progress,
                 )
             return {
                 "repo_id": str(repo_id),
@@ -358,9 +369,15 @@ class IndexingService:
         root: Path,
         source: str,
         delete_on_failure: bool,  # noqa: ARG002 — caller handles deletion; here for parity
+        on_progress: ProgressCallback | None = None,
     ) -> dict[str, Any]:
         started = time.perf_counter()
-        chunks = await chunk_repo(root)
+        ignore_spec = parse_ignore_file(root, repo_id=str(repo_id))
+        ignore_patterns_payload: list[str] | None = (
+            list(ignore_spec.patterns) if ignore_spec is not None else None
+        )
+        chunks = await chunk_repo(root, extra_skip_globs=ignore_spec)
+        files_total = len({c.file_path for c in chunks})
         if len(chunks) > MAX_CHUNKS_PER_REPO:
             raise IndexError(
                 IndexErrorCategory.PAYLOAD_TOO_LARGE,
@@ -380,6 +397,7 @@ class IndexingService:
                     embedding_provider=provider.name,
                     embedding_model=model,
                     indexed_at=now,
+                    codesensei_ignore_patterns=ignore_patterns_payload,
                 )
                 await session.commit()
             _logger.info(
@@ -423,6 +441,7 @@ class IndexingService:
 
         embeddings: list[list[float]] = []
         embed_start = time.perf_counter()
+        last_publish_ts = 0.0
         try:
             for batch_start in range(0, len(chunks), EMBED_BATCH_SIZE):
                 batch = chunks[batch_start : batch_start + EMBED_BATCH_SIZE]
@@ -436,6 +455,21 @@ class IndexingService:
                         f"expected {EXPECTED_EMBEDDING_DIM}.",
                     )
                 embeddings.extend(vectors)
+                if on_progress is not None:
+                    now_ts = time.monotonic()
+                    if now_ts - last_publish_ts > 0.5:
+                        last_publish_ts = now_ts
+                        chunks_done = batch_start + len(batch)
+                        files_done = len({c.file_path for c in chunks[:chunks_done]})
+                        await on_progress(
+                            {
+                                "kind": "progress",
+                                "files_done": files_done,
+                                "files_total": files_total,
+                                "chunks_done": chunks_done,
+                                "current_file": batch[-1].file_path if batch else None,
+                            }
+                        )
         except ProviderError as exc:
             raise IndexError(
                 IndexErrorCategory.EMBEDDING_FAILED,
@@ -466,6 +500,7 @@ class IndexingService:
                 embedding_provider=provider.name,
                 embedding_model=model,
                 indexed_at=now,
+                codesensei_ignore_patterns=ignore_patterns_payload,
             )
             await session.commit()
 

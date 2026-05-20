@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import Card from '../components/primitives/Card.vue'
 import RepoForm from '../components/RepoForm.vue'
 import RepoList from '../components/RepoList.vue'
 import { useToast } from '../composables/useToast'
+import { useJobStream, type ProgressFrame } from '../composables/useJobStream'
 import {
   createIndex,
   deleteRepo,
@@ -19,6 +20,16 @@ const toast = useToast()
 
 const repos = ref<RepoEntry[]>([])
 const pollerHandle = ref<ReturnType<typeof setInterval> | null>(null)
+const activeJobId = ref<string | null>(null)
+
+function onStreamFrame(frame: ProgressFrame): void {
+  void refresh()
+  if (frame.kind === 'complete') {
+    activeJobId.value = null
+  }
+}
+
+const { fallbackToPolling } = useJobStream(activeJobId, onStreamFrame)
 
 async function refresh(): Promise<void> {
   try {
@@ -48,15 +59,34 @@ function stopPolling(): void {
   }
 }
 
+watch(fallbackToPolling, (fallback) => {
+  if (fallback) {
+    if (repos.value.some((r) => r.status === 'indexing')) {
+      startPolling()
+    }
+  } else {
+    stopPolling()
+  }
+})
+
 onMounted(() => {
   void refresh()
 })
 
-onBeforeUnmount(stopPolling)
+onBeforeUnmount(() => {
+  stopPolling()
+  activeJobId.value = null
+})
 
 function handleSubmitted(result: CreateIndexResult): void {
   void refresh()
-  if (result.mode === 'async') startPolling()
+  if (result.mode === 'async') {
+    if (result.job_id) {
+      activeJobId.value = result.job_id
+    } else {
+      startPolling()
+    }
+  }
 }
 
 async function handleDelete(repoId: string): Promise<void> {
@@ -79,7 +109,13 @@ async function handleReindex(repo: RepoEntry): Promise<void> {
       default_branch: repo.default_branch,
     })
     await refresh()
-    if (result.mode === 'async') startPolling()
+    if (result.mode === 'async') {
+      if (result.job_id) {
+        activeJobId.value = result.job_id
+      } else {
+        startPolling()
+      }
+    }
     toast.push({
       category: 'success',
       message: result.mode === 'sync' ? 'Re-indexed.' : 'Re-indexing in background.',

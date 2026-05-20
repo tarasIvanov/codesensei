@@ -41,6 +41,13 @@ function statusLabel(status: RepoEntry['status']): string {
   if (status === 'indexing') return 'INDEXING…'
   return status.toUpperCase()
 }
+
+function ignoreTooltip(patterns: string[]): string {
+  const head = patterns.slice(0, 20)
+  const tail = patterns.length - head.length
+  const lines = head.join('\n')
+  return tail > 0 ? `${lines}\n+${tail} more` : lines
+}
 </script>
 
 <template>
@@ -71,7 +78,14 @@ function statusLabel(status: RepoEntry['status']): string {
               :style="{ color: 'var(--color-text)' }"
             >{{ r.source }}</code>
           </div>
-          <Badge :tone="badgeToneFor(r.status)">{{ statusLabel(r.status) }}</Badge>
+          <div class="flex items-center gap-2">
+            <Badge
+              v-if="r.codesensei_ignore_patterns && r.codesensei_ignore_patterns.length > 0"
+              tone="neutral"
+              :title="ignoreTooltip(r.codesensei_ignore_patterns)"
+            >🚫 {{ r.codesensei_ignore_patterns.length }} custom ignores</Badge>
+            <Badge :tone="badgeToneFor(r.status)">{{ statusLabel(r.status) }}</Badge>
+          </div>
         </div>
       </template>
       <template #body>
