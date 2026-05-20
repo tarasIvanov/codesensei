@@ -53,9 +53,13 @@ async def insert_run(
     elapsed_ms: int,
     findings: Sequence[Finding],
     context_files: list[str] | None,
+    prompt_tokens: int | None = None,
+    completion_tokens: int | None = None,
+    cost_usd: float | None = None,
 ) -> ReviewRun:
     """Insert a `review_runs` row + N `review_findings` rows. Commits before returning."""
     has_temporal = any(f.temporal_context for f in findings)
+    rounded_cost = round(cost_usd, 6) if cost_usd is not None else None
     run = ReviewRun(
         input_kind=input_kind,
         pr_url=pr_url,
@@ -67,6 +71,9 @@ async def insert_run(
         finding_count=len(findings),
         has_temporal=has_temporal,
         context_files=context_files,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        cost_usd=rounded_cost,
     )
     for position, f in enumerate(findings):
         run.findings.append(

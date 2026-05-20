@@ -14,6 +14,9 @@ export interface ReviewRunSummary {
   elapsed_ms: number
   finding_count: number
   has_temporal: boolean
+  prompt_tokens?: number | null
+  completion_tokens?: number | null
+  cost_usd?: number | null
 }
 
 export interface ReviewRunDetail {
@@ -27,6 +30,9 @@ export interface ReviewRunDetail {
   elapsed_ms: number
   findings: Finding[]
   context_files?: string[] | null
+  prompt_tokens?: number | null
+  completion_tokens?: number | null
+  cost_usd?: number | null
 }
 
 const FALLBACK_MESSAGE: Record<ReviewErrorCategory, string> = {

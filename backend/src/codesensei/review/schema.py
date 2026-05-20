@@ -120,6 +120,9 @@ class ReviewResult(BaseModel):
     provider: str
     elapsed_ms: int
     context_files: list[str] | None = None  # NEW (feature 005): present only when repo_id was used
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    cost_usd: float | None = None
 
 
 class ReviewRequest(BaseModel):

@@ -34,6 +34,9 @@ def _row_to_summary(row: ReviewRun) -> ReviewRunSummary:
         elapsed_ms=row.elapsed_ms,
         finding_count=row.finding_count,
         has_temporal=row.has_temporal,
+        prompt_tokens=row.prompt_tokens,
+        completion_tokens=row.completion_tokens,
+        cost_usd=float(row.cost_usd) if row.cost_usd is not None else None,
     )
 
 
@@ -68,6 +71,9 @@ def _row_to_detail(row: ReviewRun) -> ReviewRunDetail:
         elapsed_ms=row.elapsed_ms,
         findings=_row_to_finding(row),
         context_files=row.context_files,
+        prompt_tokens=row.prompt_tokens,
+        completion_tokens=row.completion_tokens,
+        cost_usd=float(row.cost_usd) if row.cost_usd is not None else None,
     )
 
 

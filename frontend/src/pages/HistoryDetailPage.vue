@@ -104,6 +104,28 @@ function formatTimestamp(iso: string): string {
   }
 }
 
+function formatTokenLine(r: {
+  prompt_tokens?: number | null
+  completion_tokens?: number | null
+  cost_usd?: number | null
+}): string | null {
+  const pt = r.prompt_tokens
+  const ct = r.completion_tokens
+  const cost = r.cost_usd
+  const hasTokens = pt !== null && pt !== undefined && ct !== null && ct !== undefined
+  if (!hasTokens) {
+    if (pt === undefined && ct === undefined && cost == null) return null
+    return 'tokens N/A'
+  }
+  const base = `${pt} in / ${ct} out tokens`
+  if (cost === null || cost === undefined) return base
+  return `${base} · ~$${cost.toFixed(4)}`
+}
+
+const runTokenLine = computed<string | null>(() =>
+  run.value ? formatTokenLine(run.value) : null,
+)
+
 onMounted(load)
 </script>
 
@@ -130,6 +152,11 @@ onMounted(load)
           <span class="text-xs font-mono" :style="{ color: 'var(--color-text-muted)' }">
             {{ run.elapsed_ms }} ms
           </span>
+          <span
+            v-if="runTokenLine"
+            class="text-xs font-mono"
+            :style="{ color: 'var(--color-text-muted)' }"
+          >{{ runTokenLine }}</span>
           <span class="text-xs" :style="{ color: 'var(--color-text-muted)' }">
             {{ run.findings.length }} {{ run.findings.length === 1 ? 'finding' : 'findings' }}
           </span>

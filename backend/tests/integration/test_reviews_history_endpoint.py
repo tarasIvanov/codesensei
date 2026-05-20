@@ -30,6 +30,9 @@ def _make_db_run(
     verdict: str = "comment",
     findings_data: list[dict] | None = None,
     has_temporal: bool = False,
+    prompt_tokens: int | None = None,
+    completion_tokens: int | None = None,
+    cost_usd: float | None = None,
 ) -> DbRun:
     run = DbRun(
         id=run_id or uuid4(),
@@ -43,6 +46,9 @@ def _make_db_run(
         finding_count=len(findings_data or []),
         has_temporal=has_temporal,
         context_files=None,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        cost_usd=cost_usd,
     )
     run.created_at = datetime.now(UTC)
     run.findings = []
@@ -225,6 +231,62 @@ async def test_failed_review_does_not_persist(async_client, monkeypatch):
     resp = await async_client.post("/api/review", json={"diff": _GOOD_DIFF})
     assert resp.status_code != 200
     assert calls["count"] == 0
+
+
+async def test_post_review_persists_tokens_and_cost(async_client, monkeypatch):
+    """Feature 012: usage flows from `_last_usage` → ReviewResult + persist kwargs."""
+    captured: dict = {}
+
+    async def _fake_persist(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr("codesensei.review.service._persist_run", _fake_persist)
+
+    from codesensei.providers.base import ChatUsage
+
+    class _FakeProvider:
+        name = "openai"
+
+        def __init__(self):
+            self._last_usage = ChatUsage(
+                prompt_tokens=1000,
+                completion_tokens=500,
+                model="gpt-4o-mini",
+            )
+
+        async def chat(self, messages, **kw):
+            return json.dumps({"verdict": "approve", "findings": []})
+
+    monkeypatch.setattr("codesensei.review.service.get_llm_provider", lambda: _FakeProvider())
+
+    resp = await async_client.post("/api/review", json={"diff": _GOOD_DIFF})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["prompt_tokens"] == 1000
+    assert body["completion_tokens"] == 500
+    # Cost for gpt-4o-mini (0.15, 0.60) at 1000/500 = 0.00015 + 0.0003 = 0.00045
+    assert body["cost_usd"] == pytest.approx(0.00045, abs=1e-9)
+    # Same values flowed into the persist call.
+    assert captured["prompt_tokens"] == 1000
+    assert captured["completion_tokens"] == 500
+    assert captured["cost_usd"] == pytest.approx(0.00045, abs=1e-9)
+
+
+async def test_get_review_legacy_row_returns_null_tokens(async_client, monkeypatch):
+    """Pre-feature row (all three new cols NULL) renders as null in JSON."""
+    run = _make_db_run(verdict="comment")
+
+    async def _fake_fetch(_session, _run_id):
+        return run
+
+    monkeypatch.setattr("codesensei.reviews_history.api.store.fetch_run", _fake_fetch)
+
+    resp = await async_client.get(f"/api/reviews/{run.id}")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["prompt_tokens"] is None
+    assert body["completion_tokens"] is None
+    assert body["cost_usd"] is None
 
 
 async def test_persist_db_outage_does_not_break_live_response(async_client, monkeypatch):

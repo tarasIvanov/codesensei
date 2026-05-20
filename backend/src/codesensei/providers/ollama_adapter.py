@@ -5,7 +5,7 @@ from __future__ import annotations
 import httpx
 
 from codesensei.config import get_settings
-from codesensei.providers.base import ChatMessage
+from codesensei.providers.base import ChatMessage, ChatUsage
 from codesensei.providers.errors import ProviderError, classify_http_status
 
 DEFAULT_CHAT_MODEL = "llama3.1:8b"
@@ -25,6 +25,9 @@ def _translate(exc: Exception) -> ProviderError:
 
 class OllamaChatProvider:
     name = "ollama"
+
+    def __init__(self) -> None:
+        self._last_usage: ChatUsage | None = None
 
     async def chat(
         self,
@@ -49,6 +52,15 @@ class OllamaChatProvider:
                 data = response.json()
         except Exception as exc:
             raise _translate(exc) from exc
+
+        prompt_eval = data.get("prompt_eval_count")
+        eval_count = data.get("eval_count")
+        if prompt_eval is not None and eval_count is not None:
+            self._last_usage = ChatUsage(
+                prompt_tokens=prompt_eval,
+                completion_tokens=eval_count,
+                model=chosen,
+            )
 
         content = (data.get("message") or {}).get("content", "")
         if not content:

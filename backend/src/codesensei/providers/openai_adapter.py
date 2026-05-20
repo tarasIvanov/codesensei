@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from codesensei.config import get_settings
-from codesensei.providers.base import ChatMessage
+from codesensei.providers.base import ChatMessage, ChatUsage
 from codesensei.providers.errors import ProviderError, classify_http_status
 
 if TYPE_CHECKING:
@@ -53,6 +53,9 @@ def _translate(exc: Exception) -> ProviderError:
 class OpenAIChatProvider:
     name = "openai"
 
+    def __init__(self) -> None:
+        self._last_usage: ChatUsage | None = None
+
     async def chat(
         self,
         messages: list[ChatMessage],
@@ -71,6 +74,14 @@ class OpenAIChatProvider:
             )
         except Exception as exc:  # SDK exception → ProviderError
             raise _translate(exc) from exc
+
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            self._last_usage = ChatUsage(
+                prompt_tokens=getattr(usage, "prompt_tokens", None),
+                completion_tokens=getattr(usage, "completion_tokens", None),
+                model=getattr(response, "model", None) or chosen,
+            )
 
         content = response.choices[0].message.content if response.choices else None
         if not content:

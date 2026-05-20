@@ -25,6 +25,9 @@ class ReviewRunSummary(BaseModel):
     elapsed_ms: int
     finding_count: int
     has_temporal: bool
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    cost_usd: float | None = None
 
 
 class ReviewRunListResponse(BaseModel):
@@ -48,3 +51,6 @@ class ReviewRunDetail(BaseModel):
     elapsed_ms: int
     findings: list[Finding]
     context_files: list[str] | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    cost_usd: float | None = None

@@ -3,10 +3,19 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Integer, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    ForeignKey,
+    Integer,
+    Numeric,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -52,6 +61,9 @@ class ReviewRun(Base):
     finding_count: Mapped[int] = mapped_column(Integer, nullable=False)
     has_temporal: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     context_files: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(10, 6), nullable=True)
 
     findings: Mapped[list[ReviewFinding]] = relationship(
         back_populates="run",
