@@ -83,6 +83,28 @@ const effectiveRepo = computed<RepoEntry | null>(() => {
   return readyRepos.value.find((r) => r.repo_id === effectiveRepoId.value) ?? null
 })
 
+function formatTokenLine(r: {
+  prompt_tokens?: number | null
+  completion_tokens?: number | null
+  cost_usd?: number | null
+}): string | null {
+  const pt = r.prompt_tokens
+  const ct = r.completion_tokens
+  const cost = r.cost_usd
+  const hasTokens = pt !== null && pt !== undefined && ct !== null && ct !== undefined
+  if (!hasTokens) {
+    if (pt === undefined && ct === undefined && cost == null) return null
+    return 'tokens N/A'
+  }
+  const base = `${pt} in / ${ct} out tokens`
+  if (cost === null || cost === undefined) return base
+  return `${base} · ~$${cost.toFixed(4)}`
+}
+
+const resultTokenLine = computed<string | null>(() =>
+  result.value ? formatTokenLine(result.value) : null,
+)
+
 async function refreshRepos(): Promise<void> {
   try {
     repos.value = await listRepos()
@@ -344,6 +366,11 @@ const verdictTone = computed(() => {
           <strong :style="{ color: 'var(--color-text)' }">{{ result.provider }}</strong>
           · {{ result.elapsed_ms }} ms
         </span>
+        <span
+          v-if="result && resultTokenLine"
+          class="text-xs font-mono"
+          :style="{ color: 'var(--color-text-muted)' }"
+        >{{ resultTokenLine }}</span>
       </div>
 
       <div v-if="errorMessage && !isLoading" class="flex items-center gap-3 mt-1">

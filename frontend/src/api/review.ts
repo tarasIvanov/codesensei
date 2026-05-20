@@ -36,6 +36,9 @@ export interface ReviewResult {
   provider: string
   elapsed_ms: number
   context_files?: string[] | null
+  prompt_tokens?: number | null
+  completion_tokens?: number | null
+  cost_usd?: number | null
 }
 
 export interface ReviewBody {

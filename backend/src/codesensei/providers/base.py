@@ -48,3 +48,10 @@ class ProviderState(StrEnum):
 class ProviderProbeResult:
     state: ProviderState
     provider: str | None = None
+
+
+@dataclass(frozen=True)
+class ChatUsage:
+    prompt_tokens: int | None
+    completion_tokens: int | None
+    model: str | None

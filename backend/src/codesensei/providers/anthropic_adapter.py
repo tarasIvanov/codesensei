@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from codesensei.config import get_settings
-from codesensei.providers.base import ChatMessage
+from codesensei.providers.base import ChatMessage, ChatUsage
 from codesensei.providers.errors import ProviderError, classify_http_status
 
 if TYPE_CHECKING:
@@ -60,6 +60,9 @@ def _translate(exc: Exception) -> ProviderError:
 class AnthropicChatProvider:
     name = "anthropic"
 
+    def __init__(self) -> None:
+        self._last_usage: ChatUsage | None = None
+
     async def chat(
         self,
         messages: list[ChatMessage],
@@ -82,6 +85,14 @@ class AnthropicChatProvider:
             response = await _client().messages.create(**kwargs)
         except Exception as exc:
             raise _translate(exc) from exc
+
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            self._last_usage = ChatUsage(
+                prompt_tokens=getattr(usage, "input_tokens", None),
+                completion_tokens=getattr(usage, "output_tokens", None),
+                model=chosen,
+            )
 
         blocks = getattr(response, "content", [])
         text = next(

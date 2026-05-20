@@ -23,6 +23,7 @@ from codesensei.review.git_temporal import (
     fetch_temporal_pool_for_review,
 )
 from codesensei.review.parser import parse_review
+from codesensei.review.pricing import compute_cost_usd
 from codesensei.review.prompt import build_messages
 from codesensei.review.schema import Finding, ReviewResult, TemporalEntry
 from codesensei.reviews_history import store as history_store
@@ -131,6 +132,9 @@ async def _persist_run(
     elapsed_ms: int,
     findings: list[Finding],
     context_files: list[str] | None,
+    prompt_tokens: int | None = None,
+    completion_tokens: int | None = None,
+    cost_usd: float | None = None,
 ) -> None:
     """Best-effort persist + LRU prune. Failure logs a warning and proceeds."""
     try:
@@ -147,6 +151,9 @@ async def _persist_run(
                 elapsed_ms=elapsed_ms,
                 findings=findings,
                 context_files=context_files,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                cost_usd=cost_usd,
             )
             pruned = await history_store.prune_to_cap(session)
         _logger.info(
@@ -154,6 +161,9 @@ async def _persist_run(
             run_id=str(run.id),
             finding_count=len(findings),
             pruned=pruned,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            cost_usd=cost_usd,
         )
     except Exception as exc:  # noqa: BLE001 — best-effort: live response is canonical
         _logger.warning("review_persist_failed", reason=str(exc)[:200])
@@ -222,6 +232,16 @@ async def _run_chat(
         _attach_temporal_context(findings, temporal_pool)
     elapsed_ms = int((time.perf_counter() - started) * 1000)
 
+    usage = getattr(provider, "_last_usage", None)
+    prompt_tokens = usage.prompt_tokens if usage else None
+    completion_tokens = usage.completion_tokens if usage else None
+    cost_usd = compute_cost_usd(
+        provider.name,
+        usage.model if usage else None,
+        prompt_tokens,
+        completion_tokens,
+    )
+
     context_files: list[str] | None = None
     if retrieved is not None:
         # Preserve first-occurrence order (already by descending score) and dedupe.
@@ -240,6 +260,9 @@ async def _run_chat(
         provider=provider.name,
         elapsed_ms=elapsed_ms,
         context_files=context_files,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        cost_usd=cost_usd,
     )
 
     await _persist_run(
@@ -252,6 +275,9 @@ async def _run_chat(
         elapsed_ms=elapsed_ms,
         findings=findings,
         context_files=context_files,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        cost_usd=cost_usd,
     )
     return result
 
