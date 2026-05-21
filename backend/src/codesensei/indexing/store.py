@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import delete, select, text, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -141,6 +141,27 @@ async def replace_chunks(
     return len(new_chunks)
 
 
+async def get_embedding_token_counts(
+    session: AsyncSession,
+    repo_ids: Sequence[UUID],
+) -> dict[UUID, int]:
+    """Return `{repo_id: SUM(code_chunks.token_count)}` for the supplied repo_ids.
+
+    Missing repos (no chunks) are NOT keyed; callers default-to-zero at the
+    enrichment site.
+    """
+    ids = list(repo_ids)
+    if not ids:
+        return {}
+    stmt = (
+        select(CodeChunk.repo_id, func.sum(CodeChunk.token_count).label("total"))
+        .where(CodeChunk.repo_id.in_(ids))
+        .group_by(CodeChunk.repo_id)
+    )
+    result = await session.execute(stmt)
+    return {row.repo_id: int(row.total or 0) for row in result.all()}
+
+
 __all__ = [
     "ChunkInsert",
     "upsert_repo",
@@ -149,4 +170,5 @@ __all__ = [
     "delete_repo_by_id",
     "write_repo_failure",
     "replace_chunks",
+    "get_embedding_token_counts",
 ]

@@ -117,7 +117,8 @@ function formatTokenLine(r: {
     if (pt === undefined && ct === undefined && cost == null) return null
     return 'tokens N/A'
   }
-  const base = `${pt} in / ${ct} out tokens`
+  const total = (pt as number) + (ct as number)
+  const base = `${total} tokens`
   if (cost === null || cost === undefined) return base
   return `${base} · ~$${cost.toFixed(4)}`
 }
