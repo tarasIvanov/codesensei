@@ -5,14 +5,14 @@
 
 ---
 
-## Дипломна робота / Thesis context
+## Thesis context
 
-Це випускна кваліфікаційна робота бакалавра. Автор — **Тарас Іванов**. Спеціальність 121, ІПЗ. Мета — побудувати self-hosted альтернативу хмарним сервісам типу CodeRabbit / Greptile, що:
+This is a bachelor thesis project. Author: **Taras Ivanov**. The goal is to build a self-hosted alternative to cloud PR-review services such as CodeRabbit / Greptile that:
 
-- виконує повноцінний AI-ревʼю Pull Request-ів;
-- може працювати **air-gapped** (без виходу в мережу) на власному обладнанні через Ollama;
-- комбінує persistent **AST-RAG index** репозиторію (tree-sitter + pgvector + HNSW) з **темпоральним аналізом** (`git log -L` по змінених рядках);
-- розгортається однією командою `docker compose up`.
+- performs full AI review of Pull Requests;
+- can run **air-gapped** (no outbound network) on the operator's own hardware via Ollama;
+- combines a persistent **AST-RAG index** of the repository (tree-sitter + pgvector + HNSW) with **temporal analysis** (`git log -L` over modified line ranges);
+- deploys with a single `docker compose up` command.
 
 Project goal in one sentence: replace cloud PR-review services with a single-command self-hosted stack that combines deep RAG indexing and git-history-aware analysis, without sending source code to third-party clouds unless the operator opts in.
 
@@ -107,9 +107,3 @@ For a deep dive into any architectural decision (e.g. "why pgvector over Qdrant?
 ## License
 
 Educational use — bachelor thesis project. Not yet open-source-licensed; licensing terms will be decided after thesis defence.
-
----
-
-## Contact
-
-Questions / feedback — `ivanov.dmytro.ua@gmail.com` (project author).
