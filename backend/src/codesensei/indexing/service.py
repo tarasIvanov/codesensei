@@ -28,6 +28,7 @@ from codesensei.indexing.store import (
     ChunkInsert,
     delete_repo_by_id,
     fetch_repo,
+    get_embedding_token_counts,
     list_repos_ordered,
     replace_chunks,
     upsert_repo,
@@ -70,7 +71,7 @@ def _repo_status(repo: Repo) -> Literal["ready", "indexing", "failed"]:
     return "indexing"
 
 
-def _serialise_repo(repo: Repo) -> dict[str, object]:
+def _serialise_repo(repo: Repo, *, embedding_token_count: int = 0) -> dict[str, object]:
     return {
         "repo_id": str(repo.id),
         "source": repo.source,
@@ -83,6 +84,7 @@ def _serialise_repo(repo: Repo) -> dict[str, object]:
         "status": _repo_status(repo),
         "last_error": repo.last_error,
         "codesensei_ignore_patterns": repo.codesensei_ignore_patterns,
+        "embedding_token_count": embedding_token_count,
     }
 
 
@@ -221,7 +223,10 @@ class IndexingService:
     async def list_repos(self) -> list[dict[str, object]]:
         async with self._sessionmaker() as session:
             rows = await list_repos_ordered(session)
-        return [_serialise_repo(r) for r in rows]
+            aggregates = await get_embedding_token_counts(session, [r.id for r in rows])
+        return [
+            _serialise_repo(r, embedding_token_count=aggregates.get(r.id, 0)) for r in rows
+        ]
 
     async def delete_repo(self, repo_id: UUID) -> None:
         async with self._sessionmaker() as session:

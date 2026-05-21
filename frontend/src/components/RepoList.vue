@@ -48,6 +48,10 @@ function ignoreTooltip(patterns: string[]): string {
   const lines = head.join('\n')
   return tail > 0 ? `${lines}\n+${tail} more` : lines
 }
+
+function formatThousands(n: number): string {
+  return n.toLocaleString('en-US')
+}
 </script>
 
 <template>
@@ -100,6 +104,10 @@ function ignoreTooltip(patterns: string[]): string {
             <dt class="text-xs uppercase tracking-wide text-muted">Chunks</dt>
             <dd class="font-mono" :style="{ color: 'var(--color-text)' }">
               {{ r.chunk_count }}
+            </dd>
+            <dt class="text-xs uppercase tracking-wide text-muted">Embedding tokens</dt>
+            <dd class="font-mono" :style="{ color: 'var(--color-text)' }">
+              {{ formatThousands(r.embedding_token_count ?? 0) }} tokens
             </dd>
             <dt class="text-xs uppercase tracking-wide text-muted">Indexed at</dt>
             <dd class="font-mono" :style="{ color: 'var(--color-text)' }">
