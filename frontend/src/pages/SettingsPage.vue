@@ -404,6 +404,50 @@ async function runGithubTest() {
       >
         {{ errorMessage }}
       </p>
+
+      <details
+        class="px-3 py-2"
+        :style="{
+          border: '1px solid var(--color-border)',
+          borderRadius: 'var(--radius-sm)',
+        }"
+      >
+        <summary class="cursor-pointer text-sm" :style="{ color: 'var(--color-text)' }">
+          <code>.codesensei-ignore</code> syntax
+        </summary>
+        <div class="mt-2 text-sm" :style="{ color: 'var(--color-text-muted)' }">
+          <p class="m-0 mb-2">
+            Place a <code>.codesensei-ignore</code> file at the root of any repository you index to exclude
+            extra paths and globs from the indexer's source-file walk. Patterns are applied on top of the
+            built-in skip set (<code>.git</code>, <code>node_modules</code>, <code>__pycache__</code>,
+            <code>dist</code>, <code>build</code>, etc.).
+          </p>
+          <ul class="m-0 mb-2 pl-5 list-disc">
+            <li>One pattern per line.</li>
+            <li>Lines starting with <code>#</code> are comments and ignored.</li>
+            <li>Blank lines are ignored.</li>
+            <li>Trailing <code>/</code> marks the pattern as a directory glob.</li>
+            <li>Other lines match by filename or by repo-relative path (<code>fnmatch</code> semantics).</li>
+            <li>No negation (<code>!pattern</code>) — file is additive to the built-in skip set.</li>
+            <li>Hard caps: 200 patterns / 4 KB. Excess is truncated or ignored, with a structured warning logged.</li>
+          </ul>
+          <p class="m-0 mb-1">Example:</p>
+<pre
+  class="m-0 px-2 py-2 font-mono text-xs"
+  :style="{
+    backgroundColor: 'var(--color-surface-2)',
+    color: 'var(--color-text)',
+    borderRadius: 'var(--radius-sm)',
+  }"
+># vendored deps
+vendor/
+# generated TypeScript
+*.generated.ts
+# build artefacts
+dist/
+**/*.snap</pre>
+        </div>
+      </details>
     </div>
   </Card>
 </template>

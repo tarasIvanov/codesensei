@@ -10,6 +10,8 @@ from pathlib import Path
 
 import aiofiles
 
+from codesensei.indexing.ignore import IgnoreSpec, path_matches_any
+
 # File-extension → language label. "other" is used for everything not enumerated.
 _EXT_TO_LANG: dict[str, str] = {
     ".py": "python",
@@ -68,11 +70,16 @@ def is_binary(probe: bytes) -> bool:
     return b"\x00" in probe
 
 
-def iter_source_files(root: Path) -> Iterator[Path]:
+def iter_source_files(
+    root: Path,
+    *,
+    extra_skip_globs: IgnoreSpec | None = None,
+) -> Iterator[Path]:
     """Walk the tree, yielding paths to plausibly-textual source files.
 
     Skips: hidden directories (".git", ".venv", "node_modules", "__pycache__", "dist", "build"),
-    files larger than 200 KB, files with unsupported extensions.
+    files larger than 200 KB, files with unsupported extensions, and any path
+    matched by `extra_skip_globs` (parsed `.codesensei-ignore` spec, feature 013).
     """
     skip_dirs = {
         ".git",
@@ -90,6 +97,8 @@ def iter_source_files(root: Path) -> Iterator[Path]:
             continue
         # bail out if any parent is in skip_dirs
         if any(part in skip_dirs for part in path.parts):
+            continue
+        if extra_skip_globs is not None and path_matches_any(path, extra_skip_globs, root):
             continue
         if path.suffix.lower() not in SUPPORTED_EXTS:
             continue
@@ -274,13 +283,14 @@ async def read_text_safely(path: Path) -> str | None:
         return None
 
 
-async def chunk_repo(root: Path) -> list[ChunkSpec]:
+async def chunk_repo(root: Path, *, extra_skip_globs: IgnoreSpec | None = None) -> list[ChunkSpec]:
     """Walk `root` and produce all chunks for its source files.
 
-    Empty-or-skipped files contribute nothing.
+    Empty-or-skipped files contribute nothing. `extra_skip_globs` honours
+    `.codesensei-ignore` patterns (feature 013).
     """
     out: list[ChunkSpec] = []
-    for path in iter_source_files(root):
+    for path in iter_source_files(root, extra_skip_globs=extra_skip_globs):
         content = await read_text_safely(path)
         if content is None or not content.strip():
             continue
@@ -289,6 +299,6 @@ async def chunk_repo(root: Path) -> list[ChunkSpec]:
     return out
 
 
-def count_source_files(root: Path) -> int:
+def count_source_files(root: Path, *, extra_skip_globs: IgnoreSpec | None = None) -> int:
     """Pre-scan: how many source files would be indexed (used by sync/async dispatcher)."""
-    return sum(1 for _ in iter_source_files(root))
+    return sum(1 for _ in iter_source_files(root, extra_skip_globs=extra_skip_globs))

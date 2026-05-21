@@ -45,7 +45,7 @@ async def test_fill_repo_payload_too_large(monkeypatch, tmp_path: Path):
     """When chunks > 5000, raise PAYLOAD_TOO_LARGE before any embedding."""
     svc, _ = _make_service_with_mocks(monkeypatch)
 
-    async def fake_chunk_repo(root):  # noqa: ARG001
+    async def fake_chunk_repo(root, **kwargs):  # noqa: ARG001
         # Produce 5001 stub ChunkSpecs.
         from codesensei.indexing.chunker import ChunkSpec
 
@@ -82,7 +82,7 @@ async def test_fill_repo_empty_records_zero_chunks(monkeypatch, tmp_path: Path):
     """Repo with no source files → 0 chunks, indexed_at still set, no embed calls."""
     svc, _ = _make_service_with_mocks(monkeypatch)
 
-    async def fake_chunk_repo(root):  # noqa: ARG001
+    async def fake_chunk_repo(root, **kwargs):  # noqa: ARG001
         return []
 
     monkeypatch.setattr("codesensei.indexing.service.chunk_repo", fake_chunk_repo)
@@ -101,6 +101,7 @@ async def test_fill_repo_empty_records_zero_chunks(monkeypatch, tmp_path: Path):
         embedding_provider,
         embedding_model,
         indexed_at,
+        codesensei_ignore_patterns=None,
     ):
         captured["repo_id"] = repo_id
         captured["count"] = len(new_chunks)
@@ -129,7 +130,7 @@ async def test_fill_repo_embedding_dim_mismatch(monkeypatch, tmp_path: Path):
 
     from codesensei.indexing.chunker import ChunkSpec
 
-    async def fake_chunk_repo(root):  # noqa: ARG001
+    async def fake_chunk_repo(root, **kwargs):  # noqa: ARG001
         return [ChunkSpec("a.py", "python", 1, 1, "x = 1")]
 
     monkeypatch.setattr("codesensei.indexing.service.chunk_repo", fake_chunk_repo)
@@ -191,7 +192,7 @@ async def test_fill_repo_happy_path_writes_chunks(monkeypatch, tmp_path: Path):
     svc, _ = _make_service_with_mocks(monkeypatch)
     from codesensei.indexing.chunker import ChunkSpec
 
-    async def fake_chunk_repo(root):  # noqa: ARG001
+    async def fake_chunk_repo(root, **kwargs):  # noqa: ARG001
         return [
             ChunkSpec("a.py", "python", 1, 3, "def foo(): return 1"),
             ChunkSpec("b.md", "markdown", 1, 2, "# Hi"),
@@ -213,6 +214,7 @@ async def test_fill_repo_happy_path_writes_chunks(monkeypatch, tmp_path: Path):
         embedding_provider,
         embedding_model,
         indexed_at,
+        codesensei_ignore_patterns=None,
     ):
         captured["chunks"] = list(new_chunks)
         return len(new_chunks)
