@@ -20,6 +20,8 @@ dependencies = [
   "tiktoken>=0.7",
   "aiofiles>=24",
   "pgvector>=0.3",
+  "tree-sitter>=0.23",
+  "tree-sitter-language-pack>=0.2",
 ]
 
 [project.optional-dependencies]
