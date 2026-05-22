@@ -1,4 +1,4 @@
-"""Language-aware chunking — Python AST, Markdown headings, sliding-window fallback."""
+"""Language-aware chunking — cAST via tree-sitter (feature 015), sliding-window fallback."""
 
 from __future__ import annotations
 
@@ -9,8 +9,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import aiofiles
+import structlog
 
 from codesensei.indexing.ignore import IgnoreSpec, path_matches_any
+
+_log = structlog.get_logger("indexing.chunker")
 
 # File-extension → language label. "other" is used for everything not enumerated.
 _EXT_TO_LANG: dict[str, str] = {
@@ -254,13 +257,56 @@ def chunk_sliding(
 
 
 def dispatch_chunker(file_path: str, content: str) -> list[ChunkSpec]:
-    """Pick the right chunker by extension."""
-    suffix = Path(file_path).suffix.lower()
-    if suffix == ".py":
-        return chunk_python(content, file_path)
-    if suffix == ".md":
-        return chunk_markdown(content, file_path)
-    return chunk_sliding(content, file_path)
+    """Route a file through cAST (feature 015) with sliding-window fallback.
+
+    Routing modes emitted as `chunker_routing` log events:
+      - `ast` — cAST path produced chunks.
+      - `sliding_no_grammar` — language label not in `_LANG_LABEL_TO_GRAMMAR`.
+      - `sliding_parse_failed` — cAST raised or returned None.
+      - `sliding_no_extension` — extension not in `SUPPORTED_EXTS` (callers
+        bypass `iter_source_files`).
+    """
+    chunks, _mode = _dispatch_chunker_with_mode(file_path, content)
+    return chunks
+
+
+def _dispatch_chunker_with_mode(file_path: str, content: str) -> tuple[list[ChunkSpec], str]:
+    """Internal dispatcher that returns (chunks, mode) for the per-run summary."""
+    from codesensei.indexing import ast_chunker as _ast
+
+    lang = language_for(Path(file_path))
+    if lang == "other":
+        _log.info("chunker_routing", path=file_path, lang=lang, mode="sliding_no_extension")
+        return chunk_sliding(content, file_path), "sliding_no_extension"
+
+    if lang not in _ast._LANG_LABEL_TO_GRAMMAR:
+        _log.info("chunker_routing", path=file_path, lang=lang, mode="sliding_no_grammar")
+        return chunk_sliding(content, file_path), "sliding_no_grammar"
+
+    try:
+        chunks = _ast.chunk_with_treesitter(content, lang, file_path)
+    except Exception:
+        _log.info(
+            "chunker_routing",
+            path=file_path,
+            lang=lang,
+            mode="sliding_parse_failed",
+            exc_info=True,
+        )
+        return chunk_sliding(content, file_path), "sliding_parse_failed"
+
+    if chunks is None or (not chunks and content.strip()):
+        # For markdown specifically, fall back to the heading splitter before sliding.
+        if lang == "markdown":
+            _log.info(
+                "chunker_routing", path=file_path, lang=lang, mode="sliding_parse_failed"
+            )
+            return chunk_markdown(content, file_path), "sliding_parse_failed"
+        _log.info("chunker_routing", path=file_path, lang=lang, mode="sliding_parse_failed")
+        return chunk_sliding(content, file_path), "sliding_parse_failed"
+
+    _log.info("chunker_routing", path=file_path, lang=lang, mode="ast", count=len(chunks))
+    return chunks, "ast"
 
 
 async def read_text_safely(path: Path) -> str | None:
@@ -287,15 +333,27 @@ async def chunk_repo(root: Path, *, extra_skip_globs: IgnoreSpec | None = None) 
     """Walk `root` and produce all chunks for its source files.
 
     Empty-or-skipped files contribute nothing. `extra_skip_globs` honours
-    `.codesensei-ignore` patterns (feature 013).
+    `.codesensei-ignore` patterns (feature 013). Emits one
+    `chunker_run_summary` log event at the end with per-mode file counts.
     """
     out: list[ChunkSpec] = []
+    by_mode: dict[str, int] = {
+        "ast": 0,
+        "sliding_no_grammar": 0,
+        "sliding_parse_failed": 0,
+        "sliding_no_extension": 0,
+    }
+    total = 0
     for path in iter_source_files(root, extra_skip_globs=extra_skip_globs):
         content = await read_text_safely(path)
         if content is None or not content.strip():
             continue
         rel = path.relative_to(root).as_posix()
-        out.extend(dispatch_chunker(rel, content))
+        total += 1
+        chunks, mode = _dispatch_chunker_with_mode(rel, content)
+        by_mode[mode] = by_mode.get(mode, 0) + 1
+        out.extend(chunks)
+    _log.info("chunker_run_summary", total=total, by_mode=by_mode)
     return out
 
 
