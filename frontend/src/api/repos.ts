@@ -22,10 +22,8 @@ export interface CreateIndexBody {
 
 export interface CreateIndexResult {
   repo_id: string
-  job_id?: string
-  chunk_count?: number
-  indexed_at?: string
-  mode: 'sync' | 'async'
+  job_id: string
+  mode: 'async'
 }
 
 export type RepoErrorCategory =

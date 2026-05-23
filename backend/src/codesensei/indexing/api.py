@@ -14,9 +14,9 @@ router = APIRouter(tags=["indexing"])
 _logger = structlog.get_logger()
 
 
-@router.post("/index", status_code=status.HTTP_201_CREATED)
+@router.post("/index", status_code=status.HTTP_202_ACCEPTED)
 async def post_index(request: Request) -> Response:
-    """Dispatch sync (≤200 source files) or async (>200) indexing."""
+    """Register the repo and enqueue an indexing job (ADR-018: always async)."""
     payload = await request.json()
     if not isinstance(payload, dict):
         raise IndexError(IndexErrorCategory.INVALID_INPUT, "Body must be a JSON object.")
@@ -31,11 +31,10 @@ async def post_index(request: Request) -> Response:
 
     service = IndexingService.from_request()
     result = await service.dispatch(source=source, default_branch=default_branch)
-    status_code = 201 if result["mode"] == "sync" else 202
     return Response(
         content=__import__("json").dumps(result),
         media_type="application/json",
-        status_code=status_code,
+        status_code=status.HTTP_202_ACCEPTED,
     )
 
 

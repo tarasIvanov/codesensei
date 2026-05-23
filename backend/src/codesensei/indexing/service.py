@@ -40,7 +40,6 @@ from codesensei.providers.factory import get_embedding_provider
 ProgressCallback = Callable[[dict[str, Any]], Awaitable[None]]
 
 MAX_CHUNKS_PER_REPO = 5_000
-SYNC_FILE_THRESHOLD = 200
 EMBED_BATCH_SIZE = 100
 EXPECTED_EMBEDDING_DIM = 1536
 MAX_CHUNK_TOKENS = 7_000  # OpenAI text-embedding-3-small caps at 8192; leave headroom.
@@ -179,25 +178,12 @@ class IndexingService:
     # ------- HTTP-facing entry points -------
 
     async def dispatch(self, *, source: str, default_branch: str | None) -> dict[str, object]:
-        """Decide sync vs async based on the pre-scan; deferred-import to keep enqueue optional."""
+        """Register the repo row and enqueue an arq job. Always async (ADR-018).
+
+        Pre-scan cloning is delegated to the worker; the request path stays sub-second
+        regardless of repo size so reverse-proxy timeouts never become a factor.
+        """
         canonical, source_kind = normalise_source(source)
-        # Pre-scan: need to materialise the working tree exactly once. For sync we'll re-use it.
-        async with materialise(canonical, source_kind, default_branch) as root:
-            file_count = count_source_files(root)
-            if file_count <= SYNC_FILE_THRESHOLD:
-                snapshot = await self._run_sync_within_tree(
-                    source=canonical,
-                    source_kind=source_kind,
-                    default_branch=default_branch,
-                    root=root,
-                )
-                return {
-                    "repo_id": str(snapshot["repo_id"]),
-                    "chunk_count": snapshot["chunk_count"],
-                    "indexed_at": snapshot["indexed_at"],
-                    "mode": "sync",
-                }
-        # async path: tree dropped after the pre-scan; the worker re-clones.
         repo_id = await self._register_async(
             source=canonical, source_kind=source_kind, default_branch=default_branch
         )
@@ -323,49 +309,6 @@ class IndexingService:
         async with self._sessionmaker() as session:
             await write_repo_failure(session, repo_id, message)
             await session.commit()
-
-    async def _run_sync_within_tree(
-        self,
-        *,
-        source: str,
-        source_kind: Literal["https", "local"],
-        default_branch: str | None,
-        root: Path,
-    ) -> dict[str, Any]:
-        created_now = False
-        async with self._sessionmaker() as session:
-            row, created_now = await upsert_repo(
-                session,
-                source=source,
-                source_kind=source_kind,
-                default_branch=default_branch,
-            )
-            if not created_now and row.indexed_at is None and row.last_error is None:
-                # An async indexing is in flight — refuse a parallel sync overwrite.
-                await session.commit()
-                raise IndexError(
-                    IndexErrorCategory.ALREADY_INDEXING,
-                    f"Indexing already in progress for source={source!r}",
-                    retryable=True,
-                )
-            repo_id = row.id
-            await session.commit()
-
-        try:
-            return await self._fill_repo(
-                repo_id=repo_id,
-                root=root,
-                source=source,
-                delete_on_failure=created_now,
-            )
-        except IndexError as exc:
-            if created_now:
-                # Roll back the row we created in this same request to avoid a tombstone.
-                await self._record_failure(repo_id, exc.message)
-                await self._delete_if_pristine(repo_id)
-            else:
-                await self._record_failure(repo_id, exc.message)
-            raise
 
     async def _fill_repo(
         self,

@@ -80,12 +80,10 @@ onBeforeUnmount(() => {
 
 function handleSubmitted(result: CreateIndexResult): void {
   void refresh()
-  if (result.mode === 'async') {
-    if (result.job_id) {
-      activeJobId.value = result.job_id
-    } else {
-      startPolling()
-    }
+  if (result.job_id) {
+    activeJobId.value = result.job_id
+  } else {
+    startPolling()
   }
 }
 
@@ -109,16 +107,14 @@ async function handleReindex(repo: RepoEntry): Promise<void> {
       default_branch: repo.default_branch,
     })
     await refresh()
-    if (result.mode === 'async') {
-      if (result.job_id) {
-        activeJobId.value = result.job_id
-      } else {
-        startPolling()
-      }
+    if (result.job_id) {
+      activeJobId.value = result.job_id
+    } else {
+      startPolling()
     }
     toast.push({
       category: 'success',
-      message: result.mode === 'sync' ? 'Re-indexed.' : 'Re-indexing in background.',
+      message: 'Re-indexing in background.',
     })
   } catch (err) {
     const message =
