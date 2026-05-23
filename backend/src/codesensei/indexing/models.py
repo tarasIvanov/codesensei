@@ -1,4 +1,4 @@
-"""SQLAlchemy mapped classes for `repos` and `code_chunks` (feature 005)."""
+"""SQLAlchemy mapped classes for `repositories` and `code_chunks` (feature 005)."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ __all__ = ["Repo", "CodeChunk", "Base"]
 
 
 class Repo(Base):
-    __tablename__ = "repos"
+    __tablename__ = "repositories"
 
     id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
@@ -27,7 +27,9 @@ class Repo(Base):
     source: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     source_kind: Mapped[str] = mapped_column(
         Text,
-        CheckConstraint("source_kind IN ('https','local')", name="repos_source_kind_check"),
+        CheckConstraint(
+            "source_kind IN ('https','local')", name="repositories_source_kind_check"
+        ),
         nullable=False,
     )
     default_branch: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -56,7 +58,7 @@ class CodeChunk(Base):
     )
     repo_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
-        ForeignKey("repos.id", ondelete="CASCADE"),
+        ForeignKey("repositories.id", ondelete="CASCADE"),
         nullable=False,
     )
     file_path: Mapped[str] = mapped_column(Text, nullable=False)

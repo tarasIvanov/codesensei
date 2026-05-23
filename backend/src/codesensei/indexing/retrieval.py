@@ -92,7 +92,7 @@ async def _query_repo_meta(
     result = await session.execute(
         text(
             "SELECT embedding_provider, embedding_model, indexed_at IS NOT NULL AS ready "
-            "FROM repos WHERE id = :rid"
+            "FROM repositories WHERE id = :rid"
         ),
         {"rid": repo_id},
     )
