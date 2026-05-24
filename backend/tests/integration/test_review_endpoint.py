@@ -41,29 +41,32 @@ def _envelope(findings, verdict="comment") -> str:
     return json.dumps({"verdict": verdict, "findings": findings})
 
 
-async def test_post_review_happy_diff(async_client, monkeypatch):
+async def test_post_review_happy_diff(async_client, monkeypatch, inline_review_worker):
     raw = _envelope(
         [{"file": "x.py", "line": 1, "severity": "major", "message": "ahem"}],
         verdict="request_changes",
     )
     _install_provider(monkeypatch, return_value=raw)
     resp = await async_client.post("/api/review", json={"diff": _GOOD_DIFF})
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["verdict"] == "request_changes"
-    assert body["provider"] == "openai"
-    assert len(body["findings"]) == 1
-    assert body["findings"][0]["severity"] == "major"
-    assert isinstance(body["elapsed_ms"], int)
+    assert resp.status_code == 202
+    assert "job_id" in resp.json()
+    review = inline_review_worker["last_review"]
+    assert review is not None
+    assert str(review.verdict) == "request_changes"
+    assert review.provider == "openai"
+    assert len(review.findings) == 1
+    assert review.findings[0].severity == "major"
+    assert isinstance(review.elapsed_ms, int)
 
 
-async def test_post_review_clean_diff(async_client, monkeypatch):
+async def test_post_review_clean_diff(async_client, monkeypatch, inline_review_worker):
     _install_provider(monkeypatch, return_value=_envelope([], verdict="approve"))
     resp = await async_client.post("/api/review", json={"diff": _GOOD_DIFF})
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["findings"] == []
-    assert body["verdict"] == "approve"
+    assert resp.status_code == 202
+    review = inline_review_worker["last_review"]
+    assert review is not None
+    assert review.findings == []
+    assert str(review.verdict) == "approve"
 
 
 async def test_post_review_empty_body(async_client):
@@ -93,24 +96,26 @@ async def test_post_review_malformed_pr_url(async_client):
     assert resp.json()["error"]["category"] == "invalid_input"
 
 
-async def test_post_review_malformed_llm_output(async_client, monkeypatch):
+async def test_post_review_malformed_llm_output(async_client, monkeypatch, inline_review_worker):
     _install_provider(monkeypatch, return_value="this is not JSON")
     resp = await async_client.post("/api/review", json={"diff": _GOOD_DIFF})
-    assert resp.status_code == 502
-    body = resp.json()
-    assert body["error"]["category"] == "provider_malformed_output"
-    assert body["error"]["retryable"] is False
+    assert resp.status_code == 202
+    envelope = inline_review_worker["last_result"]
+    assert envelope is not None and "error" in envelope
+    assert envelope["error"]["category"] == "provider_malformed_output"
+    assert envelope["error"]["retryable"] is False
 
 
-async def test_post_review_provider_unavailable(async_client, monkeypatch):
+async def test_post_review_provider_unavailable(async_client, monkeypatch, inline_review_worker):
     from codesensei.providers import ProviderError
 
     _install_provider(monkeypatch, side_effect=ProviderError("openai", "503 down", retryable=True))
     resp = await async_client.post("/api/review", json={"diff": _GOOD_DIFF})
-    assert resp.status_code == 502
-    body = resp.json()
-    assert body["error"]["category"] == "provider_unavailable"
-    assert body["error"]["retryable"] is True
+    assert resp.status_code == 202
+    envelope = inline_review_worker["last_result"]
+    assert envelope is not None and "error" in envelope
+    assert envelope["error"]["category"] == "provider_unavailable"
+    assert envelope["error"]["retryable"] is True
 
 
 async def test_post_review_payload_too_large(async_client, monkeypatch):
@@ -165,7 +170,9 @@ _API = "https://api.github.com/repos/octo/repo/pulls/7"
 _PR_URL = "https://github.com/octo/repo/pull/7"
 
 
-async def test_post_review_pr_url_happy(async_client, monkeypatch, _respx_block_unintercepted_http):
+async def test_post_review_pr_url_happy(
+    async_client, monkeypatch, _respx_block_unintercepted_http, inline_review_worker
+):
     import httpx
 
     _respx_block_unintercepted_http.get(_API).mock(
@@ -179,13 +186,16 @@ async def test_post_review_pr_url_happy(async_client, monkeypatch, _respx_block_
         ),
     )
     resp = await async_client.post("/api/review", json={"pr_url": _PR_URL})
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["verdict"] == "comment"
-    assert body["findings"][0]["file"] == "x.py"
+    assert resp.status_code == 202
+    review = inline_review_worker["last_review"]
+    assert review is not None
+    assert str(review.verdict) == "comment"
+    assert review.findings[0].file == "x.py"
 
 
-async def test_post_review_pr_url_404(async_client, monkeypatch, _respx_block_unintercepted_http):
+async def test_post_review_pr_url_404(
+    async_client, monkeypatch, _respx_block_unintercepted_http, inline_review_worker
+):
     import httpx
 
     _respx_block_unintercepted_http.get(_API).mock(
@@ -193,10 +203,11 @@ async def test_post_review_pr_url_404(async_client, monkeypatch, _respx_block_un
     )
     _install_provider(monkeypatch, return_value=_envelope([], verdict="approve"))
     resp = await async_client.post("/api/review", json={"pr_url": _PR_URL})
-    assert resp.status_code == 502
-    body = resp.json()
-    assert body["error"]["category"] == "github_fetch_failed"
-    assert "not found" in body["error"]["message"].lower()
+    assert resp.status_code == 202
+    envelope = inline_review_worker["last_result"]
+    assert envelope is not None and "error" in envelope
+    assert envelope["error"]["category"] == "github_fetch_failed"
+    assert "not found" in envelope["error"]["message"].lower()
 
 
 async def test_post_review_pr_url_malformed(async_client):

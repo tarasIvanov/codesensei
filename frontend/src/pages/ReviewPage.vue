@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import Button from '../components/primitives/Button.vue'
@@ -10,12 +10,18 @@ import FindingsList from '../components/findings/FindingsList.vue'
 import type { Finding } from '../components/findings/FindingRow.vue'
 import PostToGitHubPanel from '../components/PostToGitHubPanel.vue'
 import { useToast } from '../composables/useToast'
+import { useJobStream, type ProgressFrame } from '../composables/useJobStream'
 import {
   pushToRecentList,
   readList,
   usePersistedRef,
 } from '../composables/usePersistedRef'
-import { ReviewApiError, runReview, type ReviewResult } from '../api/review'
+import {
+  fetchReviewRun,
+  ReviewApiError,
+  runReview,
+  type ReviewResult,
+} from '../api/review'
 import { listRepos, type RepoEntry } from '../api/repos'
 
 const toast = useToast()
@@ -27,15 +33,63 @@ const RESULT_KEY = 'codesensei.review.result'
 const RECENT_PR_KEY = 'codesensei.review.recentPrs'
 const MANUAL_REPO_KEY = 'codesensei.review.manualRepoId'
 const DISMISSED_KEY = 'codesensei.review.dismissed'
+const ACTIVE_JOB_KEY = 'codesensei.review.activeJobId'
 
 const prUrl = usePersistedRef<string>(PR_URL_KEY, '')
 const result = usePersistedRef<ReviewResult | null>(RESULT_KEY, null)
 const manualRepoOverride = usePersistedRef<string | null>(MANUAL_REPO_KEY, null)
 const dismissedFindings = usePersistedRef<number[]>(DISMISSED_KEY, [])
+const persistedJobId = usePersistedRef<string | null>(ACTIVE_JOB_KEY, null)
 
 const isLoading = ref(false)
 const errorMessage = ref('')
 const errorRetryable = ref(false)
+const activeJobId = ref<string | null>(null)
+const stageLabel = ref<string>('')
+
+function onJobFrame(frame: ProgressFrame): void {
+  if (frame.kind === 'progress' && frame.message) {
+    stageLabel.value = frame.message
+  }
+  if (frame.kind === 'complete') {
+    activeJobId.value = null
+    persistedJobId.value = null
+    if (frame.state === 'failed') {
+      isLoading.value = false
+      stageLabel.value = ''
+      const cat = frame.error_category || 'internal'
+      errorMessage.value = frame.error_message || `Review failed: ${cat}`
+      errorRetryable.value = false
+      toast.push({ category: 'error', message: errorMessage.value })
+      return
+    }
+    const runId = frame.result?.run_id
+    if (runId) {
+      void hydrateFromRun(runId)
+    } else {
+      isLoading.value = false
+      stageLabel.value = ''
+      errorMessage.value = 'Review completed but no run_id was returned.'
+      toast.push({ category: 'error', message: errorMessage.value })
+    }
+  }
+}
+
+const { fallbackToPolling: _reviewFallback } = useJobStream(activeJobId, onJobFrame)
+void _reviewFallback
+
+async function hydrateFromRun(runId: string): Promise<void> {
+  try {
+    result.value = await fetchReviewRun(runId)
+    stageLabel.value = ''
+  } catch (err) {
+    errorMessage.value =
+      err instanceof ReviewApiError ? err.message : (err as Error).message
+    toast.push({ category: 'error', message: errorMessage.value })
+  } finally {
+    isLoading.value = false
+  }
+}
 
 const repos = ref<RepoEntry[]>([])
 const reposLoaded = ref(false)
@@ -95,10 +149,22 @@ async function refreshRepos(): Promise<void> {
 
 onMounted(async () => {
   await refreshRepos()
+  // Resume a job that was running when the tab last closed.
+  if (persistedJobId.value) {
+    isLoading.value = true
+    stageLabel.value = 'Reconnecting to in-flight review...'
+    activeJobId.value = persistedJobId.value
+  }
   if (route.query.autorun === '1' && prUrl.value.trim().length > 0) {
     router.replace({ path: '/review', query: {} })
     void submit()
   }
+})
+
+onBeforeUnmount(() => {
+  // Keep activeJobId in localStorage so the next mount can reconnect; just
+  // detach the in-memory ref so useJobStream tears down the socket.
+  activeJobId.value = null
 })
 
 watch(prUrl, (v) => {
@@ -112,16 +178,20 @@ async function submit(): Promise<void> {
   if (!canSubmit.value) return
   const trimmed = prUrl.value.trim()
   isLoading.value = true
+  stageLabel.value = 'Submitting review job...'
   result.value = null
   dismissedFindings.value = []
   errorMessage.value = ''
   errorRetryable.value = false
   try {
-    result.value = await runReview({
+    const submitted = await runReview({
       pr_url: trimmed,
       repo_id: effectiveRepoId.value,
     })
     recentPrs.value = pushToRecentList<string>(RECENT_PR_KEY, trimmed, 10)
+    persistedJobId.value = submitted.job_id
+    activeJobId.value = submitted.job_id
+    stageLabel.value = 'Job queued...'
   } catch (err) {
     if (err instanceof ReviewApiError) {
       errorMessage.value = err.message
@@ -130,8 +200,8 @@ async function submit(): Promise<void> {
       errorMessage.value = (err as Error).message || 'Unknown error.'
     }
     toast.push({ category: 'error', message: errorMessage.value })
-  } finally {
     isLoading.value = false
+    stageLabel.value = ''
   }
 }
 
@@ -339,7 +409,7 @@ const verdictTone = computed(() => {
     </div>
   </Card>
 
-  <Card v-if="isLoading" title="Findings" subtitle="Generating review…">
+  <Card v-if="isLoading" title="Findings" :subtitle="stageLabel || 'Generating review…'">
     <div class="flex flex-col gap-4" aria-label="Loading findings">
       <div>
         <Skeleton :lines="1" class="mb-2" />

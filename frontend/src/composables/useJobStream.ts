@@ -11,6 +11,17 @@ export interface ProgressFrame {
   error_message?: string | null
   final_files?: number
   final_chunks?: number
+  // Feature 018: review pipeline frames carry a coarse stage label + message and
+  // a `result` payload on the complete frame (run_id, verdict, finding_count).
+  stage?: string
+  message?: string
+  result?: {
+    run_id?: string | null
+    verdict?: string
+    finding_count?: number
+    provider?: string
+    elapsed_ms?: number
+  } | null
 }
 
 export function useJobStream(

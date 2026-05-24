@@ -84,7 +84,7 @@ async def jobs_stream(websocket: WebSocket, job_id: str) -> None:
             payload = result_info.result if result_info is not None else None
             error = (payload or {}).get("error") if isinstance(payload, dict) else None
             complete_state = "failed" if error is not None else "success"
-            complete_frame = {
+            complete_frame: dict[str, object] = {
                 "kind": "complete",
                 "state": complete_state,
                 "error_category": error.get("category") if error else None,
@@ -94,6 +94,11 @@ async def jobs_stream(websocket: WebSocket, job_id: str) -> None:
                 if isinstance(payload, dict)
                 else 0,
             }
+            # Feature 018: review jobs return a nested `result` payload with run_id, verdict,
+            # finding_count. Surface it on the complete frame so the SPA can fetch the full
+            # review without an extra round-trip.
+            if isinstance(payload, dict) and isinstance(payload.get("result"), dict):
+                complete_frame["result"] = payload["result"]
             await websocket.send_text(json.dumps(complete_frame))
             await websocket.close(code=1000)
             return

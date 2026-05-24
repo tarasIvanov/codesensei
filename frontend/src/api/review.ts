@@ -39,12 +39,18 @@ export interface ReviewResult {
   prompt_tokens?: number | null
   completion_tokens?: number | null
   cost_usd?: number | null
+  run_id?: string | null
 }
 
 export interface ReviewBody {
   diff?: string
   pr_url?: string
   repo_id?: string | null
+}
+
+export interface SubmitReviewResult {
+  job_id: string
+  mode: 'async'
 }
 
 export class ReviewApiError extends Error {
@@ -75,19 +81,7 @@ const FALLBACK_MESSAGE_FOR_CATEGORY: Record<ReviewErrorCategory, string> = {
   internal: 'Unexpected server error.',
 }
 
-export async function runReview(body: ReviewBody): Promise<ReviewResult> {
-  const payload: Record<string, unknown> = {}
-  if (body.diff !== undefined) payload.diff = body.diff
-  if (body.pr_url !== undefined) payload.pr_url = body.pr_url
-  if (body.repo_id) payload.repo_id = body.repo_id
-  const response = await fetch('/api/review', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-  if (response.ok) {
-    return (await response.json()) as ReviewResult
-  }
+async function _raiseFromResponse(response: Response): Promise<never> {
   let category: ReviewErrorCategory = 'internal'
   let message = FALLBACK_MESSAGE_FOR_CATEGORY.internal
   let retryable = false
@@ -104,4 +98,28 @@ export async function runReview(body: ReviewBody): Promise<ReviewResult> {
     // Body wasn't JSON — fall back to defaults above.
   }
   throw new ReviewApiError(category, message, retryable)
+}
+
+export async function runReview(body: ReviewBody): Promise<SubmitReviewResult> {
+  const payload: Record<string, unknown> = {}
+  if (body.diff !== undefined) payload.diff = body.diff
+  if (body.pr_url !== undefined) payload.pr_url = body.pr_url
+  if (body.repo_id) payload.repo_id = body.repo_id
+  const response = await fetch('/api/review', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    return _raiseFromResponse(response)
+  }
+  return (await response.json()) as SubmitReviewResult
+}
+
+export async function fetchReviewRun(runId: string): Promise<ReviewResult> {
+  const response = await fetch(`/api/reviews/${encodeURIComponent(runId)}`)
+  if (!response.ok) {
+    return _raiseFromResponse(response)
+  }
+  return (await response.json()) as ReviewResult
 }

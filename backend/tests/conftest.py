@@ -1,5 +1,6 @@
 """Shared pytest fixtures for backend tests."""
 
+import uuid
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
@@ -71,3 +72,56 @@ def mock_probes(monkeypatch) -> Callable[..., None]:
         monkeypatch.setattr("codesensei.healthcheck.probe_embedding_provider", fake_probe_embedding)
 
     return set_probes
+
+
+@pytest.fixture
+def inline_review_worker(monkeypatch) -> dict[str, Any]:
+    """Replace `enqueue_review` with an inline executor of `review_job`.
+
+    Returns a dict with `last_result` (worker envelope), `last_review` (full
+    ReviewResult or None), `error` (ReviewError or None), `calls` (count).
+    Stream publishes are silenced by a no-op redis stub. `_persist_run` is
+    mocked out so tests don't need a live DB; tests that care about persistence
+    must mock it themselves.
+    """
+    from codesensei.review.tasks import review_job
+
+    captured: dict[str, Any] = {
+        "last_result": None,
+        "last_review": None,
+        "error": None,
+        "calls": 0,
+    }
+
+    class _NoopRedis:
+        async def publish(self, *args, **kwargs):  # noqa: ARG002 — swallow frames in tests
+            return 0
+
+    # Wrap `_run_chat` to stash the ReviewResult so tests can introspect findings.
+    # NOTE: persistence is the production best-effort path. Tests that need to
+    # mock `_persist_run` should do so inside the test body — monkeypatch
+    # ordering means the local mock overrides any wrapper set up here.
+    from codesensei.review import service as review_service
+
+    real_run_chat = review_service._run_chat
+
+    async def _wrapped_run_chat(*args, **kwargs):
+        try:
+            review = await real_run_chat(*args, **kwargs)
+            captured["last_review"] = review
+            return review
+        except Exception as exc:
+            captured["error"] = exc
+            raise
+
+    monkeypatch.setattr(review_service, "_run_chat", _wrapped_run_chat)
+
+    async def _fake_enqueue(body: dict[str, Any]) -> str:
+        captured["calls"] += 1
+        job_id = uuid.uuid4().hex
+        ctx = {"job_id": job_id, "redis": _NoopRedis()}
+        captured["last_result"] = await review_job(ctx, body)
+        return job_id
+
+    monkeypatch.setattr("codesensei.review.router.enqueue_review", _fake_enqueue)
+    return captured
