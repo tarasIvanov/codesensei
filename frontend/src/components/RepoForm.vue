@@ -29,10 +29,7 @@ async function submit(): Promise<void> {
     defaultBranch.value = ''
     toast.push({
       category: 'success',
-      message:
-        result.mode === 'sync'
-          ? `Indexed ${result.chunk_count ?? 0} chunks.`
-          : 'Indexing started in the background.',
+      message: 'Indexing started in the background.',
     })
   } catch (err) {
     const message =
