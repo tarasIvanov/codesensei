@@ -57,7 +57,9 @@ def _entry(short: str, subject: str) -> TemporalEntry:
     )
 
 
-async def test_review_attaches_temporal_to_matching_finding(async_client, monkeypatch):
+async def test_review_attaches_temporal_to_matching_finding(
+    async_client, monkeypatch, inline_review_worker
+):
     pool = {
         "src/x.py": [
             (
@@ -115,22 +117,25 @@ async def test_review_attaches_temporal_to_matching_finding(async_client, monkey
         "/api/review",
         json={"diff": _DIFF, "repo_id": "00000000-0000-0000-0000-000000000001"},
     )
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    findings = body["findings"]
+    assert resp.status_code == 202, resp.text
+    review = inline_review_worker["last_review"]
+    assert review is not None
+    findings = review.findings
     assert len(findings) == 2
 
-    matched = next(f for f in findings if f["file"] == "src/x.py")
-    assert matched["temporal_context"] is not None
-    assert len(matched["temporal_context"]) == 2
-    assert matched["temporal_context"][0]["short_sha"].startswith("abc1234")
-    assert matched["temporal_context"][0]["author_date"] == "2026-01-15T10:42:13+00:00"
+    matched = next(f for f in findings if f.file == "src/x.py")
+    assert matched.temporal_context is not None
+    assert len(matched.temporal_context) == 2
+    assert matched.temporal_context[0].short_sha.startswith("abc1234")
+    assert matched.temporal_context[0].author_date == "2026-01-15T10:42:13+00:00"
 
-    unmatched = next(f for f in findings if f["file"] == "src/y.py")
-    assert unmatched.get("temporal_context") in (None, [])
+    unmatched = next(f for f in findings if f.file == "src/y.py")
+    assert unmatched.temporal_context in (None, [])
 
 
-async def test_review_without_repo_id_skips_temporal(async_client, monkeypatch):
+async def test_review_without_repo_id_skips_temporal(
+    async_client, monkeypatch, inline_review_worker
+):
     calls = {"count": 0}
 
     async def _fake_pool(**_kwargs):
@@ -145,10 +150,10 @@ async def test_review_without_repo_id_skips_temporal(async_client, monkeypatch):
     )
 
     resp = await async_client.post("/api/review", json={"diff": _DIFF})
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["verdict"] == "approve"
+    assert resp.status_code == 202
+    review = inline_review_worker["last_review"]
+    assert review is not None
+    assert str(review.verdict) == "approve"
     assert calls["count"] == 0
-    # No temporal_context anywhere — but findings list is empty so just confirm key absent.
-    for f in body["findings"]:
-        assert "temporal_context" not in f or f["temporal_context"] is None
+    for f in review.findings:
+        assert f.temporal_context in (None, [])

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict
 from uuid import UUID
 
@@ -32,6 +33,12 @@ _logger = structlog.get_logger(__name__)
 
 _HUNK_HEADER_RE = re.compile(r"^@@\s-\d+(?:,\d+)?\s\+(\d+)(?:,(\d+))?\s@@")
 _FILE_HEADER_RE = re.compile(r"^\+\+\+ b/(.+)$")
+
+StageCallback = Callable[[str, str], Awaitable[None]]
+
+
+async def _noop_stage(stage: str, message: str) -> None:  # noqa: ARG001 — placeholder hook
+    return None
 
 
 def _extract_rhs_hunks(diff: str) -> dict[str, list[tuple[int, int]]]:
@@ -135,8 +142,8 @@ async def _persist_run(
     prompt_tokens: int | None = None,
     completion_tokens: int | None = None,
     cost_usd: float | None = None,
-) -> None:
-    """Best-effort persist + LRU prune. Failure logs a warning and proceeds."""
+) -> str | None:
+    """Best-effort persist + LRU prune. Returns the new run_id on success, None on failure."""
     try:
         sessionmaker = get_sessionmaker()
         async with sessionmaker() as session:
@@ -165,8 +172,10 @@ async def _persist_run(
             completion_tokens=completion_tokens,
             cost_usd=cost_usd,
         )
+        return str(run.id)
     except Exception as exc:  # noqa: BLE001 — best-effort: live response is canonical
         _logger.warning("review_persist_failed", reason=str(exc)[:200])
+        return None
 
 
 async def _run_chat(
@@ -174,11 +183,20 @@ async def _run_chat(
     *,
     repo_id: UUID | None = None,
     original_pr_url: str | None = None,
+    on_stage: StageCallback | None = None,
 ) -> ReviewResult:
+    """Run the review pipeline.
+
+    `on_stage(stage, message)` — best-effort progress hook for the WS publisher.
+    `ReviewResult.run_id` is populated when persistence succeeds; None on best-effort failure.
+    """
+    notify = on_stage or _noop_stage
+    await notify("validating", "Validating diff...")
     _enforce_size(diff)
 
     retrieved: RetrievalResult | None = None
     if repo_id is not None:
+        await notify("retrieving", "Retrieving repository context...")
         retrieved = await _retrieve_context(repo_id, diff)
 
     temporal_pool: FileTemporalPool = {}
@@ -188,6 +206,7 @@ async def _run_chat(
             hunks_by_file = _extract_rhs_hunks(diff)
             windows_by_file = collapse_diff_to_windows(hunks_by_file)
             if windows_by_file:
+                await notify("temporal", "Fetching git history for hunks...")
                 temporal_pool, summary = await fetch_temporal_pool_for_review(
                     repo_id=repo_id,
                     repo_source=repo_source,
@@ -210,6 +229,7 @@ async def _run_chat(
     )
     timeout = get_settings().review_llm_timeout_s
     started = time.perf_counter()
+    await notify("llm", f"Generating findings with {provider.name}...")
     try:
         raw = await asyncio.wait_for(
             provider.chat(messages, temperature=0.1, max_tokens=4096),
@@ -227,6 +247,7 @@ async def _run_chat(
             f"{exc.provider} provider error: {exc.message}",
             retryable=exc.retryable,
         ) from exc
+    await notify("parsing", "Parsing response...")
     verdict, findings = parse_review(provider.name, raw)
     if temporal_pool:
         _attach_temporal_context(findings, temporal_pool)
@@ -254,18 +275,8 @@ async def _run_chat(
                 if len(context_files) >= 10:
                     break
 
-    result = ReviewResult(
-        verdict=verdict,
-        findings=findings,
-        provider=provider.name,
-        elapsed_ms=elapsed_ms,
-        context_files=context_files,
-        prompt_tokens=prompt_tokens,
-        completion_tokens=completion_tokens,
-        cost_usd=cost_usd,
-    )
-
-    await _persist_run(
+    await notify("persisting", "Saving review to history...")
+    run_id = await _persist_run(
         input_kind="pr_url" if original_pr_url else "diff",
         pr_url=original_pr_url,
         repo_id=repo_id,
@@ -279,17 +290,42 @@ async def _run_chat(
         completion_tokens=completion_tokens,
         cost_usd=cost_usd,
     )
-    return result
+
+    return ReviewResult(
+        verdict=verdict,
+        findings=findings,
+        provider=provider.name,
+        elapsed_ms=elapsed_ms,
+        context_files=context_files,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        cost_usd=cost_usd,
+        run_id=run_id,
+    )
 
 
 class ReviewService:
     """Stateless façade — methods correspond to the two input modes."""
 
-    async def run_for_diff(self, diff: str, *, repo_id: UUID | None = None) -> ReviewResult:
-        return await _run_chat(diff, repo_id=repo_id)
+    async def run_for_diff(
+        self,
+        diff: str,
+        *,
+        repo_id: UUID | None = None,
+        on_stage: StageCallback | None = None,
+    ) -> ReviewResult:
+        return await _run_chat(diff, repo_id=repo_id, on_stage=on_stage)
 
-    async def run_for_url(self, pr_url: str, *, repo_id: UUID | None = None) -> ReviewResult:
+    async def run_for_url(
+        self,
+        pr_url: str,
+        *,
+        repo_id: UUID | None = None,
+        on_stage: StageCallback | None = None,
+    ) -> ReviewResult:
         from codesensei.review.github_diff import fetch_pr_diff
 
+        if on_stage is not None:
+            await on_stage("fetching", "Fetching PR diff from GitHub...")
         diff = await fetch_pr_diff(pr_url)
-        return await _run_chat(diff, repo_id=repo_id, original_pr_url=pr_url)
+        return await _run_chat(diff, repo_id=repo_id, original_pr_url=pr_url, on_stage=on_stage)

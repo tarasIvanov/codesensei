@@ -123,6 +123,7 @@ class ReviewResult(BaseModel):
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     cost_usd: float | None = None
+    run_id: str | None = None  # NEW (feature 018): persisted run identifier from reviews_history
 
 
 class ReviewRequest(BaseModel):

@@ -75,6 +75,25 @@ async def enqueue_index_repo(
         await pool.aclose()
 
 
+async def enqueue_review(body: dict[str, Any]) -> str:
+    """Enqueue review_job; return job_id. `body` is validated by the HTTP handler."""
+    try:
+        pool = await create_pool(_redis_settings())
+    except (RedisError, OSError) as exc:
+        raise JobError(
+            JobErrorCategory.QUEUE_UNAVAILABLE,
+            "Redis is not reachable.",
+            retryable=True,
+        ) from exc
+    try:
+        job = await pool.enqueue_job("review_job", body)
+        if job is None:
+            raise JobError(JobErrorCategory.INTERNAL, "arq returned no job handle.")
+        return job.job_id
+    finally:
+        await pool.aclose()
+
+
 async def lookup_job(job_id: str) -> dict[str, Any]:
     """Return the same wire shape as contracts/api_jobs.md GET success/not-found."""
     if not job_id or len(job_id) > 200:

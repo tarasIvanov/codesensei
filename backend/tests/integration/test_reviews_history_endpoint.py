@@ -177,12 +177,13 @@ async def test_delete_review_204_then_404(async_client, monkeypatch):
     assert resp2.json()["error"]["category"] == "invalid_input"
 
 
-async def test_post_review_calls_persist(async_client, monkeypatch):
+async def test_post_review_calls_persist(async_client, monkeypatch, inline_review_worker):
     """Successful POST /api/review invokes the persist module."""
     captured: dict = {}
 
     async def _fake_persist(**kwargs):
         captured.update(kwargs)
+        return "fake-run-id"
 
     monkeypatch.setattr("codesensei.review.service._persist_run", _fake_persist)
 
@@ -200,7 +201,8 @@ async def test_post_review_calls_persist(async_client, monkeypatch):
     monkeypatch.setattr("codesensei.review.service.get_llm_provider", lambda: _FakeProvider())
 
     resp = await async_client.post("/api/review", json={"diff": _GOOD_DIFF})
-    assert resp.status_code == 200, resp.text
+    assert resp.status_code == 202, resp.text
+    assert inline_review_worker["last_review"] is not None
     assert captured["input_kind"] == "diff"
     assert captured["pr_url"] is None
     assert captured["verdict"] == "approve"
@@ -209,12 +211,13 @@ async def test_post_review_calls_persist(async_client, monkeypatch):
     assert captured["findings"] == []
 
 
-async def test_failed_review_does_not_persist(async_client, monkeypatch):
+async def test_failed_review_does_not_persist(async_client, monkeypatch, inline_review_worker):
     """A provider error must NOT trigger persistence."""
     calls = {"count": 0}
 
     async def _fake_persist(**kwargs):
         calls["count"] += 1
+        return "should-not-be-called"
 
     monkeypatch.setattr("codesensei.review.service._persist_run", _fake_persist)
 
@@ -229,16 +232,21 @@ async def test_failed_review_does_not_persist(async_client, monkeypatch):
     monkeypatch.setattr("codesensei.review.service.get_llm_provider", lambda: _FakeProvider())
 
     resp = await async_client.post("/api/review", json={"diff": _GOOD_DIFF})
-    assert resp.status_code != 200
+    assert resp.status_code == 202
+    envelope = inline_review_worker["last_result"]
+    assert envelope is not None and "error" in envelope
     assert calls["count"] == 0
 
 
-async def test_post_review_persists_tokens_and_cost(async_client, monkeypatch):
+async def test_post_review_persists_tokens_and_cost(
+    async_client, monkeypatch, inline_review_worker
+):
     """Feature 012: usage flows from `_last_usage` → ReviewResult + persist kwargs."""
     captured: dict = {}
 
     async def _fake_persist(**kwargs):
         captured.update(kwargs)
+        return "fake-run-id"
 
     monkeypatch.setattr("codesensei.review.service._persist_run", _fake_persist)
 
@@ -260,12 +268,13 @@ async def test_post_review_persists_tokens_and_cost(async_client, monkeypatch):
     monkeypatch.setattr("codesensei.review.service.get_llm_provider", lambda: _FakeProvider())
 
     resp = await async_client.post("/api/review", json={"diff": _GOOD_DIFF})
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert body["prompt_tokens"] == 1000
-    assert body["completion_tokens"] == 500
+    assert resp.status_code == 202, resp.text
+    review = inline_review_worker["last_review"]
+    assert review is not None
+    assert review.prompt_tokens == 1000
+    assert review.completion_tokens == 500
     # Cost for gpt-4o-mini (0.15, 0.60) at 1000/500 = 0.00015 + 0.0003 = 0.00045
-    assert body["cost_usd"] == pytest.approx(0.00045, abs=1e-9)
+    assert review.cost_usd == pytest.approx(0.00045, abs=1e-9)
     # Same values flowed into the persist call.
     assert captured["prompt_tokens"] == 1000
     assert captured["completion_tokens"] == 500
@@ -289,7 +298,9 @@ async def test_get_review_legacy_row_returns_null_tokens(async_client, monkeypat
     assert body["cost_usd"] is None
 
 
-async def test_persist_db_outage_does_not_break_live_response(async_client, monkeypatch):
+async def test_persist_db_outage_does_not_break_live_response(
+    async_client, monkeypatch, inline_review_worker
+):
     """A DB outage inside `_persist_run`'s try/except must NOT fail the live response."""
 
     def _raising_sessionmaker():
@@ -307,5 +318,8 @@ async def test_persist_db_outage_does_not_break_live_response(async_client, monk
 
     resp = await async_client.post("/api/review", json={"diff": _GOOD_DIFF})
     # Live response must still succeed (persist swallowed the DB error and logged a warning).
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["verdict"] == "approve"
+    assert resp.status_code == 202, resp.text
+    review = inline_review_worker["last_review"]
+    assert review is not None
+    assert str(review.verdict) == "approve"
+    assert review.run_id is None  # persist failed silently → no run_id propagated
