@@ -14,10 +14,18 @@ class ProviderError(Exception):
         return f"{self.provider}: {self.message}"
 
 
-def classify_http_status(code: int) -> bool:
-    """Return True if the upstream HTTP status code is retryable."""
+def classify_http_status(provider: str, code: int) -> bool:
+    """Return True if the upstream HTTP status code is retryable for the given provider.
+
+    Different providers expose different retry semantics:
+      * Ollama is a local runtime — no rate limits, no 408/429.
+      * Anthropic uses 529 ("overloaded") in addition to 429.
+      * Default (OpenAI-compatible) treats 5xx + 408/429 as retryable.
+    """
+    if provider == "ollama":
+        return 500 <= code < 600
+    if provider == "anthropic":
+        return 500 <= code < 600 or code in (429, 529)
     if 500 <= code < 600:
         return True
-    if code in (408, 429):
-        return True
-    return False
+    return code in (408, 429)
