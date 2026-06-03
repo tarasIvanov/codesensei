@@ -7,7 +7,7 @@ from typing import Any
 
 
 def channel_for(job_id: str) -> str:
-    return f"codesensei:job:{job_id}"
+    return f"codesensei:jobs:{job_id}"
 
 
 async def publish(redis: Any, job_id: str, frame: dict) -> None:
